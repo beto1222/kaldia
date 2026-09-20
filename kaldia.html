@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KALDIA - Gestão de Espaços</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <header>
+        <div class="logo-container">
+            <img src="logo.png" alt="Kaldia Logo" class="logo-img" style="height: 80px; cursor: pointer;"
+                onclick="showView('view-home')">
+        </div>
+        <button class="header-btn" onclick="voltarPagina()">Voltar</button>
+    </header>
+
+    <div class="container">
+
+        <!-- TELA 1: HOME -->
+        <div id="view-home" class="view active" style="text-align: center; padding: 40px 0;">
+            <h2 style="color: var(--primary-blue);">Bem-vindo à Kaldia</h2>
+            <p style="color: #666; margin-bottom: 40px;">Selecione o seu perfil para acessar o sistema.</p>
+
+            <div style="max-width: 400px; margin: 0 auto;">
+                <button class="btn" onclick="abrirAutenticacao()">Acesso do Produtor (App)</button>
+                <br><br>
+                <button class="btn btn-blue" onclick="iniciarFiscal()">Acesso do Fiscal (Dashboard)</button>
+                <br><br>
+                <button class="btn" style="background-color: var(--primary-blue); color: white; border: none;"
+                    onclick="abrirConsultaReserva()">🔍 Consultar Reserva / Status</button>
+            </div>
+        </div>
+
+        <!-- =================== FLUXO DO PRODUTOR =================== -->
+
+        <!-- TELA 1.1: AUTENTICAÇÃO (LOGIN) -->
+        <div id="view-prod-auth" class="view">
+            <div class="auth-container" style="text-align: center;">
+                <h2 style="color: var(--primary-blue); margin-top: 0;">Identificação</h2>
+                <p style="color: #666; margin-bottom: 25px;">Insira seu CPF para acessar a área de reservas.</p>
+
+                <div class="form-group" style="text-align: left;">
+                    <label>CPF</label>
+                    <input type="number" id="auth-cpf" placeholder="Apenas números">
+                </div>
+
+                <button class="btn" onclick="verificarLogin()">Continuar</button>
+
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <p style="font-size: 14px; margin-bottom: 10px;">Ainda não é cadastrado no KALDIA?</p>
+                    <button class="btn btn-outline" onclick="showView('view-prod-cadastro')">Primeiro Acesso (Criar
+                        Conta)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TELA 1.2: CADASTRO DE PRODUTOR -->
+        <div id="view-prod-cadastro" class="view">
+            <h2 style="color: var(--primary-blue);">Cadastro de Produtor</h2>
+            <p style="color: #666;">Preencha seus dados para agilizar suas futuras locações.</p>
+
+            <div class="form-group">
+                <label>Nome Completo *</label>
+                <input type="text" id="cad-nome" placeholder="Digite seu nome" value="Carlos Mendonça">
+            </div>
+
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>CPF *</label>
+                    <input type="number" id="cad-cpf" placeholder="Apenas números" value="09876543211">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>E-mail <span class="obs-label">(Opcional)</span></label>
+                    <input type="email" id="cad-email" placeholder="exemplo@email.com"
+                        value="carlos.mendonca@fazenda.com.br">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Tipo de Produto Principal *</label>
+                <input type="text" id="cad-produto" placeholder="Ex: Tomate, Batata, Folhagens..."
+                    value="Alface e Rúcula (Hidroponia)">
+            </div>
+
+            <div class="form-group">
+                <label>Veículo de Transporte * <span class="obs-label">(Placa ou Modelo)</span></label>
+                <input type="text" id="cad-veiculo" placeholder="Ex: Caminhão Baú (ABC-1234)"
+                    value="Caminhão Baú (KLD-2024)">
+            </div>
+
+            <div class="form-group">
+                <label>Pessoas Autorizadas p/ Embarque e Descarga</label>
+                <textarea id="cad-pessoas" rows="2"
+                    placeholder="Nome dos ajudantes ou motoristas autorizados">José (Motorista) e Marcos (Ajudante)</textarea>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button class="btn" onclick="salvarNovoCadastro()">Confirmar Cadastro</button>
+                <button class="btn btn-outline" onclick="showView('view-prod-auth')">Voltar</button>
+            </div>
+        </div>
+
+        <!-- TELA 1.3: APROVAÇÃO PENDENTE (NOVA!) -->
+        <div id="view-prod-aprovacao" class="view">
+            <div class="aprovacao-container">
+
+                <!-- Ícone com spinner animado -->
+                <div class="aprovacao-icon-wrapper">
+                    <div class="aprovacao-spinner"></div>
+                    <div class="aprovacao-icon">⏳</div>
+                </div>
+
+                <h2 class="aprovacao-titulo">Cadastro Enviado para Análise</h2>
+                <p class="aprovacao-subtitulo">
+                    Seu cadastro foi recebido com sucesso e está sendo verificado pela equipe KALDIA.
+                </p>
+
+                <!-- Card de Status -->
+                <div class="aprovacao-status-card">
+                    <div class="aprovacao-status-label">Status do Cadastro</div>
+                    <div class="aprovacao-status-valor">
+                        <span class="status-dot"></span>
+                        Aguardando Aprovação
+                    </div>
+                </div>
+
+                <!-- Barra de progresso da verificação -->
+                <div class="aprovacao-progress-bar">
+                    <div id="aprovacao-progress" class="aprovacao-progress-fill"></div>
+                </div>
+                <div id="aprovacao-progress-text" class="aprovacao-progress-text">Iniciando verificação...</div>
+
+                <!-- Etapas de verificação -->
+                <div class="aprovacao-etapas">
+                    <div id="etapa-1" class="aprovacao-etapa">
+                        <div class="aprovacao-etapa-icon">1</div>
+                        <span>Recebendo dados cadastrais...</span>
+                    </div>
+                    <div id="etapa-2" class="aprovacao-etapa">
+                        <div class="aprovacao-etapa-icon">2</div>
+                        <span>Verificando documentação (CPF)...</span>
+                    </div>
+                    <div id="etapa-3" class="aprovacao-etapa">
+                        <div class="aprovacao-etapa-icon">3</div>
+                        <span>Validando dados do veículo...</span>
+                    </div>
+                    <div id="etapa-4" class="aprovacao-etapa">
+                        <div class="aprovacao-etapa-icon">4</div>
+                        <span>Confirmando registro de Produtor Rural...</span>
+                    </div>
+                    <div id="etapa-5" class="aprovacao-etapa">
+                        <div class="aprovacao-etapa-icon">5</div>
+                        <span>Aprovação final do sistema...</span>
+                    </div>
+                </div>
+
+                <!-- Dados resumidos do cadastro -->
+                <div class="aprovacao-dados">
+                    <div class="aprovacao-dados-titulo">Dados Enviados</div>
+                    <div class="aprovacao-dado-linha">
+                        <span>Nome:</span>
+                        <span id="aprovacao-nome">-</span>
+                    </div>
+                    <div class="aprovacao-dado-linha">
+                        <span>CPF:</span>
+                        <span id="aprovacao-cpf">-</span>
+                    </div>
+                    <div class="aprovacao-dado-linha">
+                        <span>Produto:</span>
+                        <span id="aprovacao-produto">-</span>
+                    </div>
+                    <div class="aprovacao-dado-linha">
+                        <span>Veículo:</span>
+                        <span id="aprovacao-veiculo">-</span>
+                    </div>
+                </div>
+
+                <!-- Aviso informativo -->
+                <div class="aprovacao-info">
+                    <span class="aprovacao-info-icon">ℹ️</span>
+                    <span>A verificação é automática e leva alguns instantes. Você será redirecionado automaticamente
+                        assim que seu cadastro for aprovado.</span>
+                </div>
+
+                <button class="btn btn-outline" onclick="showView('view-home')">Voltar ao Início</button>
+            </div>
+        </div>
+
+        <!-- TELA 1.4: APROVAÇÃO CONFIRMADA (NOVA!) -->
+        <div id="view-prod-aprovado" class="view">
+            <div class="aprovacao-container">
+
+                <!-- Ícone de sucesso -->
+                <div class="aprovacao-sucesso-icon-wrapper">
+                    <span class="aprovacao-sucesso-icon">✓</span>
+                </div>
+
+                <h2 class="aprovacao-sucesso-titulo">Cadastro Aprovado!</h2>
+                <p class="aprovacao-sucesso-msg">
+                    Parabéns! Seus dados foram verificados e aprovados.<br>
+                    Você será redirecionado para a área de reservas.
+                </p>
+
+                <div class="aprovacao-redirect-info">
+                    <span>🔔</span> Redirecionando em <strong id="countdown-timer">3</strong> segundos...
+                </div>
+
+                <button class="btn" onclick="iniciarProdutor()">Acessar Agora</button>
+            </div>
+        </div>
+
+        <!-- TELA 2: PRODUTOR - RESERVA -->
+        <div id="view-prod-reserva" class="view">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="color: var(--primary-blue);">Agendar Locação</h2>
+                <span id="nome-produtor-logado"
+                    style="background: var(--box-free); padding: 5px 15px; border-radius: 20px; font-size: 13px; font-weight: bold;"></span>
+            </div>
+
+            <div class="form-group">
+                <label>Data de Ocupação</label>
+                <input type="date" id="prod-data" value="2026-09-20">
+            </div>
+            <div class="form-group">
+                <label>Seus Produtos nesta carga</label>
+                <input type="text" id="prod-produto">
+            </div>
+            <div class="form-group">
+                <label>Quantidade Total Estimada</label>
+                <input type="text" id="prod-qtd" placeholder="Ex: 80 Caixas">
+            </div>
+
+            <div class="form-group" style="margin-top: 25px;">
+                <label
+                    style="font-size: 16px; border-bottom: 2px solid var(--primary-green); padding-bottom: 5px;">Selecione
+                    o Box no Mapa</label>
+                <p style="font-size: 13px; color: #666; margin-top: 5px;">Veja onde seus concorrentes estão e escolha a
+                    melhor localização.</p>
+
+                <div class="legenda">
+                    <div class="legenda-item">
+                        <div class="dot livre"></div> Livre (Clique)
+                    </div>
+                    <div class="legenda-item">
+                        <div class="dot reservado"></div> Ocupado
+                    </div>
+                    <div class="legenda-item">
+                        <div class="dot selecionado"></div> Sua Escolha
+                    </div>
+                </div>
+
+                <div id="mapa-produtor" class="patio-grid">
+                    <!-- Preenchido via JavaScript -->
+                </div>
+
+
+                <div id="msg-box-selecionado"
+                    style="text-align: center; padding: 10px; background: #e2e8f0; border-radius: 4px; font-weight: bold; color: var(--primary-blue);">
+                    Nenhum box selecionado
+                </div>
+            </div>
+
+            <button class="btn" onclick="confirmarReserva()">Avançar para Pagamento</button>
+        </div>
+
+        <!-- TELA 3: PRODUTOR - PAGAMENTO -->
+        <div id="view-prod-pagamento" class="view" style="text-align: center;">
+            <h2 style="color: var(--primary-blue);">Confirmar Pagamento</h2>
+            <p>Sua reserva para o <strong id="pagamento-box"></strong> está pré-aprovada.</p>
+
+            <div id="pagamento-valor"
+                style="background: #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0; font-size: 24px; font-weight: bold; color: var(--primary-blue);">
+                Valor: R$ 35,00
+            </div>
+
+            <div style="text-align: left; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                <h3 style="margin-top: 0; font-size: 16px; color: var(--primary-blue);">Forma de Pagamento</h3>
+                
+                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="radio" name="metodo-pagamento" value="pix" checked style="width: auto;">
+                    <span style="font-weight: bold;">PIX (Aprovação Imediata)</span>
+                    <span style="margin-left: auto; font-size: 20px;">💠</span>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="radio" name="metodo-pagamento" value="credito" style="width: auto;">
+                    <span style="font-weight: bold;">Cartão de Crédito</span>
+                    <div style="margin-left: auto; display: flex; gap: 5px;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/800px-Visa_Inc._logo.svg.png" style="height: 15px;" alt="Visa">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/1280px-Mastercard-logo.svg.png" style="height: 15px;" alt="Mastercard">
+                    </div>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="radio" name="metodo-pagamento" value="debito" style="width: auto;">
+                    <span style="font-weight: bold;">Cartão de Débito</span>
+                    <div style="margin-left: auto; display: flex; gap: 5px;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/800px-Visa_Inc._logo.svg.png" style="height: 15px;" alt="Visa">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/1280px-Mastercard-logo.svg.png" style="height: 15px;" alt="Mastercard">
+                    </div>
+                </label>
+            </div>
+
+            <button class="btn" onclick="realizarPagamento()">Pagar e Confirmar</button>
+            <button class="btn btn-outline" onclick="showView('view-prod-reserva')">Voltar</button>
+        </div>
+
+        <!-- TELA 4: PRODUTOR - STATUS E CHECK-IN -->
+        <div id="view-prod-status" class="view" style="text-align: center;">
+            <h2 style="color: var(--primary-green);">Reserva Paga com Sucesso!</h2>
+            <p>Dirija-se ao local e ocupe o seu espaço.</p>
+
+            <div class="ficha-resumo">
+                <div class="ficha-linha"><span>Status do Espaço:</span> <strong
+                        style="color: var(--box-reserved);">Reservado (Aguardando Chegada)</strong></div>
+                <div class="ficha-linha"><span>Box Alocado:</span> <strong id="status-box"></strong></div>
+                <div class="ficha-linha"><span>Data:</span> <strong id="status-data"></strong></div>
+            </div>
+
+            <br>
+            <button class="btn btn-blue" onclick="fazerCheckin()">Cheguei ao Local (Fazer Check-in)</button>
+        </div>
+
+        <!-- TELA 5: PRODUTOR - FICHA RESUMO FINAL -->
+        <div id="view-prod-resumo" class="view">
+            <h2 style="color: var(--primary-green); text-align: center;">Check-in Realizado!</h2>
+            <p style="text-align: center;">Você já pode iniciar sua comercialização no espaço.</p>
+
+            <div class="ficha-resumo">
+                <h3 style="margin-top: 0; color: var(--primary-blue); text-align: center;">Ficha de Ocupação</h3>
+                <div class="ficha-linha"><span>Produtor(a):</span> <strong id="resumo-nome"></strong></div>
+                <div class="ficha-linha"><span>Status Oficial:</span> <strong
+                        style="color: var(--primary-green);">Ocupado (Check-in Concluído)</strong></div>
+                <div class="ficha-linha"><span>Box (Pedra):</span> <strong id="resumo-box"></strong></div>
+                <div class="ficha-linha"><span>Produtos:</span> <strong id="resumo-produto"></strong></div>
+                <div class="ficha-linha"><span>Volume Declarado:</span> <strong id="resumo-qtd"></strong></div>
+            </div>
+
+            <button class="btn btn-outline" style="margin-top: 20px;" onclick="showView('view-home')">Sair</button>
+        </div>
+
+        <!-- =================== FLUXO DO FISCAL =================== -->
+
+        <!-- TELA 6: FISCAL - DASHBOARD -->
+        <div id="view-fiscal-dash" class="view">
+            <div class="dash-header">
+                <h2 style="margin: 0; color: var(--primary-blue); display: flex; align-items: center; gap: 15px;">Gestão
+                    de Espaços do Dia <span id="percentual-lotacao"
+                        style="font-size: 14px; background: #e2e8f0; color: var(--primary-blue); padding: 5px 12px; border-radius: 20px; border: 1px solid #cbd5e0;">0%
+                        Lotado</span></h2>
+                <div class="fiscal-actions">
+                    <button class="btn-sm"
+                        style="background-color: var(--primary-green); color: white; padding: 8px 15px; margin-right: 10px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        onclick="abrirRelatorios()">📊 Visão Gerencial</button>
+                    <button class="btn-sm"
+                        style="background-color: var(--box-revisao); color: white; padding: 8px 15px; margin-right: 10px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        onclick="abrirGestaoProdutores()">👥 Produtores (CRM)</button>
+                    <button class="btn-sm btn-blue" style="padding: 8px 15px;" onclick="abrirModalNovo()">+ Adicionar
+                        Locação Manual</button>
+                </div>
+            </div>
+
+            <div class="legenda">
+                <div class="legenda-item">
+                    <div class="dot livre"></div> Livre
+                </div>
+                <div class="legenda-item">
+                    <div class="dot reservado"></div> Reservado (Pago)
+                </div>
+                <div class="legenda-item">
+                    <div class="dot ocupado"></div> Ocupado (No local)
+                </div>
+                <div class="legenda-item">
+                    <div class="dot alerta"></div> Irregularidade
+                </div>
+                <div class="legenda-item">
+                    <div class="dot revisao"></div> Em Revisão
+                </div>
+            </div>
+
+            <div id="mapa-patio-fiscal" class="patio-grid">
+                <!-- Preenchido via JavaScript -->
+            </div>
+
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-top: 30px; border-bottom: 2px solid var(--primary-green); padding-bottom: 5px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="color: var(--primary-blue); margin: 0; border: none; padding: 0;">Agendamentos do Dia</h3>
+                <select id="filtro-status"
+                    style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; background: white; color: var(--primary-blue); outline: none;"
+                    onchange="renderizarDashboardFiscal()">
+                    <option value="todos">Todos os Status</option>
+                    <option value="reservado">Aguardando Confirmação</option>
+                    <option value="alerta">Com Irregularidade</option>
+                    <option value="revisao">Em Revisão</option>
+                    <option value="ocupado">Ocupados</option>
+                </select>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Box</th>
+                            <th>Produtor/Responsável</th>
+                            <th>Produto Informado</th>
+                            <th>Qtd</th>
+                            <th>Status</th>
+                            <th>Ações de Gestão</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-agendamentos">
+                        <!-- Preenchido via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TELA 7: VISÃO GERENCIAL (RELATÓRIOS) -->
+        <div id="view-fiscal-relatorios" class="view">
+            <div class="dash-header">
+                <h2 style="margin: 0; color: var(--primary-blue);">Painel Gerencial de Relatórios</h2>
+                <button class="btn-sm btn-outline" style="padding: 8px 15px;" onclick="iniciarFiscal()">Voltar ao
+                    Dashboard</button>
+            </div>
+            <p style="color: #666; margin-bottom: 20px;">Visão consolidada da operação do pátio para tomada de decisão
+                gerencial.</p>
+
+            <div class="report-grid">
+                <div class="report-card">
+                    <div class="report-icon">📈</div>
+                    <div class="report-value" id="rep-lotacao">0%</div>
+                    <div class="report-label">Lotação Média do Dia</div>
+                </div>
+                <div class="report-card">
+                    <div class="report-icon">❌</div>
+                    <div class="report-value" id="rep-cancelamentos">0</div>
+                    <div class="report-label">Cancelamentos / No-show</div>
+                </div>
+                <div class="report-card">
+                    <div class="report-icon">⚠️</div>
+                    <div class="report-value" id="rep-alertas">0</div>
+                    <div class="report-label">Não Conformidades Registradas</div>
+                </div>
+                <div class="report-card">
+                    <div class="report-icon">🛠️</div>
+                    <div class="report-value" id="rep-resolvidas">0</div>
+                    <div class="report-label">Ocorrências Resolvidas</div>
+                </div>
+            </div>
+
+            <div
+                style="margin-top: 30px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <h3 style="margin-top: 0; color: var(--primary-blue);">Histórico de Lotação (Últimos 30 dias)</h3>
+                <div class="chart-container" id="grafico-lotacao">
+                    <!-- Barras geradas por JS -->
+                </div>
+                <div
+                    style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-top: 5px;">
+                    <span>30 dias atrás</span>
+                    <span>Hoje</span>
+                </div>
+            </div>
+
+            <div
+                style="margin-top: 30px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <h3 style="margin-top: 0; color: var(--primary-blue);">Eficiência de Tratativas de Pátio</h3>
+                <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
+                    <div style="flex: 1; background: #e2e8f0; height: 20px; border-radius: 10px; overflow: hidden;">
+                        <div id="rep-barra-eficiencia"
+                            style="width: 0%; background: var(--primary-green); height: 100%;"></div>
+                    </div>
+                    <strong style="color: var(--primary-green);" id="rep-texto-eficiencia">0% de Eficiência</strong>
+                </div>
+                <p style="font-size: 13px; color: #666; margin-top: 10px;">Proporção de alertas solucionados pela equipe
+                    operacional durante o mesmo turno.</p>
+            </div>
+        </div>
+
+        <!-- TELA 8: GESTÃO DE PRODUTORES E CRM -->
+        <div id="view-fiscal-produtores" class="view">
+            <div class="dash-header">
+                <h2 style="margin: 0; color: var(--primary-blue);">Gestão de Produtores e Comunicação</h2>
+                <button class="btn-sm btn-outline" style="padding: 8px 15px;" onclick="iniciarFiscal()">Voltar ao
+                    Dashboard</button>
+            </div>
+
+            <div
+                style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px;">
+                <h3 style="margin-top: 0; color: var(--primary-blue);">Campanhas Sazonais (Atração)</h3>
+                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Aumente a taxa de lotação enviando
+                    convites automáticos para produtores de culturas específicas.</p>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <input type="text" id="crm-sazonal-produto" placeholder="Ex: Morango, Tomate, Milho..."
+                            value="Morango">
+                    </div>
+                    <button class="btn" style="background-color: var(--primary-green); width: auto;"
+                        onclick="dispararSazonal()">📢 Disparar Convite Sazonal</button>
+                </div>
+            </div>
+
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary-green); padding-bottom: 5px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="color: var(--primary-blue); margin: 0; border: none; padding: 0;">Base de Produtores
+                    Cadastrados</h3>
+                <select id="filtro-crm"
+                    style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; background: white; color: var(--primary-blue); outline: none;"
+                    onchange="renderizarTabelaProdutores()">
+                    <option value="todos">Todos os Produtores</option>
+                    <option value="ativo_locado">Ativos com Locação</option>
+                    <option value="ativo_sem_locacao">Ativos sem Locação</option>
+                    <option value="inativo">Inativos</option>
+                </select>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Produtor</th>
+                            <th>Produto Principal</th>
+                            <th>Status (KALDIA)</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-produtores-crm">
+                        <!-- Preenchido via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TELA 9: CONSULTA DE RESERVA -->
+        <div id="view-consulta-reserva" class="view" style="max-width: 500px; margin: 0 auto;">
+            <h2 style="color: var(--primary-blue); text-align: center;">Consultar Reserva</h2>
+            <p style="text-align: center; color: #666; margin-bottom: 20px;">Informe um dos dados abaixo para localizar
+                sua reserva de espaço.</p>
+
+            <div class="card" style="padding: 20px;">
+                <div class="form-group">
+                    <label style="font-weight: bold; color: var(--primary-blue);">CPF, Placa do Veículo ou Código da
+                        Reserva</label>
+                    <input type="text" id="consulta-input" placeholder="Ex: 123.456.789-00, ABC-1234, KLD-998"
+                        style="text-align: center; font-size: 16px; margin-top: 10px;">
+                </div>
+                <button class="btn" id="btn-buscar-reserva" style="background-color: var(--primary-green);"
+                    onclick="buscarReserva()">Pesquisar Reserva</button>
+            </div>
+
+            <div id="resultado-consulta" style="display: none; margin-top: 25px;">
+                <div class="card"
+                    style="border-top: 4px solid var(--primary-green); text-align: center; padding: 25px;">
+                    <h3 style="margin-top: 0; color: var(--primary-blue);">Detalhes da Reserva</h3>
+
+                    <div style="margin: 15px 0;">
+                        <span
+                            style="background: var(--primary-green); color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">STATUS:
+                            CONFIRMADO</span>
+                    </div>
+
+                    <div
+                        style="text-align: left; background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+                        <p style="margin: 8px 0; border-bottom: 1px dashed #ccc; padding-bottom: 8px;">
+                            <strong>Produtor:</strong> <span id="consulta-nome"
+                                style="color: var(--primary-blue); font-weight: bold;">João da Silva</span>
+                        </p>
+                        <p style="margin: 8px 0; border-bottom: 1px dashed #ccc; padding-bottom: 8px;"><strong>Data da
+                                Entrada:</strong> <span id="consulta-data">25/10/2026</span></p>
+                        <p style="margin: 8px 0; border-bottom: 1px dashed #ccc; padding-bottom: 8px;"><strong>Espaço
+                                (Box):</strong> <span id="consulta-box"
+                                style="font-size: 16px; font-weight: bold; color: var(--primary-blue);">A-02</span></p>
+                        <p style="margin: 8px 0;"><strong>Pagamento:</strong> <span
+                                style="color: var(--primary-green); font-weight: bold;">Pago (R$ <span
+                                    id="consulta-valor">70,00</span>)</span></p>
+                    </div>
+
+                    <div style="margin-top: 20px; display: flex; flex-direction: column; align-items: center;">
+                        <p style="font-size: 13px; color: #666; margin-bottom: 8px;">Apresente este QR Code na portaria
+                        </p>
+                        <div
+                            style="width: 150px; height: 150px; background: url('https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=KALDIA-RESERVA') no-repeat center center; border: 1px solid #ccc; padding: 10px; border-radius: 8px;">
+                        </div>
+                        <p
+                            style="font-size: 16px; font-weight: 900; color: var(--primary-blue); margin-top: 15px; letter-spacing: 2px;">
+                            KLD-<span id="consulta-codigo">A02-887</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAIS DO FISCAL -->
+        <div id="modal-irregular" class="modal-overlay">
+            <div class="modal-content">
+                <h3 style="color: var(--box-alert); margin-top: 0;">Reportar Irregularidade</h3>
+                <p>Descreva a divergência encontrada no espaço (ex: quantidade diferente, produto errado, invadiu espaço
+                    vizinho).</p>
+                <input type="hidden" id="irreg-box-id">
+                <textarea id="irreg-obs" rows="4" placeholder="Detalhes da irregularidade..."></textarea>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button class="btn btn-danger" onclick="salvarIrregularidade()">Registrar e Alertar</button>
+                    <button class="btn btn-outline" onclick="fecharModais()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-tratar-alerta" class="modal-overlay">
+            <div class="modal-content">
+                <h3 style="color: var(--primary-blue); margin-top: 0;">Tratar Ocorrência</h3>
+                <p>A ocorrência reportada neste espaço foi resolvida?</p>
+                <input type="hidden" id="tratar-box-id">
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                    <button class="btn" style="background-color: var(--primary-green);" onclick="resolverOcorrencia()">✅
+                        Sim, resolvida (Fica Verde)</button>
+                    <button class="btn" style="background-color: var(--box-revisao); color: white;"
+                        onclick="revisarOcorrencia()">⏳ Não, aguardando revisão</button>
+                    <button class="btn btn-outline" onclick="fecharModais()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-novo" class="modal-overlay">
+            <div class="modal-content">
+                <h3 style="color: var(--primary-blue); margin-top: 0;">Nova Locação Manual</h3>
+                <div class="form-group">
+                    <label>Nome do Produtor</label>
+                    <input type="text" id="novo-nome" placeholder="Nome Completo">
+                </div>
+                <div class="form-group">
+                    <label>Box (Digite um disponível)</label>
+                    <input type="text" id="novo-box" placeholder="Ex: B-05">
+                </div>
+                <div class="form-group">
+                    <label>Produtos</label>
+                    <input type="text" id="novo-produto" placeholder="O que está vendendo?">
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button class="btn" onclick="salvarNovoManual()">Criar Locação</button>
+                    <button class="btn btn-outline" onclick="fecharModais()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js?v=2"></script>
+</body>
+
+</html>
