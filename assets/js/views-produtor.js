@@ -1,4 +1,4 @@
-/* Fluxo do produtor: entrar, cadastro, verificação, reserva, pagamento e minhas reservas */
+/* Fluxo do produtor: entrada (cadastro e acesso na mesma tela), reserva, pagamento e minhas reservas */
 'use strict';
 
 (function (K) {
@@ -13,14 +13,11 @@
       </li>`).join('')}</ol>`;
   };
 
-  const exigeLogin = () => {
-    const p = S().logado();
-    if (!p) return '#entrar';
-    if (!p.aprovado) return '#analise';
-    return null;
-  };
+  const exigeLogin = () => (S().logado() ? null : '#entrar');
 
-  // ---------- Entrar ----------
+  const PRODUTOS_RAPIDOS = ['Frutas', 'Verduras', 'Legumes', 'Folhosas', 'Raízes e tubérculos', 'Ovos'];
+
+  // ---------- Entrar: cadastro e acesso na mesma tela ----------
   V.entrar = {
     area: 'publico',
     titulo: 'Entrar',
@@ -30,245 +27,103 @@
           <div class="cartao-centro-cab">
             <span class="perfil-icone perfil-verde">${K.icon('truck', 24)}</span>
             <h1>Área do produtor</h1>
-            <p class="sub">Entre com o seu CPF. Se for o primeiro acesso, você faz o cadastro em seguida.</p>
+            <p class="sub">Preencha e pronto. Se você já usou o KALDIA, o CPF te leva direto para as reservas.</p>
           </div>
           <form id="form-entrar" novalidate>
             <div class="campo">
               <label for="entrar-cpf">CPF</label>
               <input id="entrar-cpf" type="text" inputmode="numeric" autocomplete="off" data-mascara="cpf" placeholder="000.000.000-00" maxlength="14">
+              <p class="campo-nota" id="entrar-retorno" aria-live="polite" hidden></p>
             </div>
-            <button class="btn btn-primario btn-bloco" type="submit">Continuar${K.icon('right', 18)}</button>
+            <div class="campo">
+              <label for="entrar-nome">Nome do produtor</label>
+              <input id="entrar-nome" type="text" autocomplete="name" placeholder="Seu nome ou o nome do sítio">
+            </div>
+            <div class="campo">
+              <label for="entrar-produto">O que você está trazendo</label>
+              <input id="entrar-produto" type="text" placeholder="Ex.: frutas, tomate, alface">
+              <div class="chips-rapidos" role="group" aria-label="Sugestões de produto">
+                ${PRODUTOS_RAPIDOS.map(p => `<button type="button" class="chip-sugestao" data-produto="${p}">${p}</button>`).join('')}
+              </div>
+            </div>
+            <button class="btn btn-primario btn-bloco" type="submit">Entrar${K.icon('right', 18)}</button>
           </form>
           <div class="dica">
             ${K.icon('info', 16)}
-            <span>Demonstração: use <button type="button" class="link" data-cpf="52998224725">529.982.247-25</button> para entrar como Antônio, já aprovado, ou digite qualquer CPF válido para criar uma conta.</span>
+            <span>Demonstração: o CPF <button type="button" class="link" data-cpf="52998224725">529.982.247-25</button> já tem cadastro (Antônio). Qualquer outro CPF válido cria a conta na hora.</span>
           </div>
-        </div>`;
-    },
-    mount(el) {
-      const inp = el.querySelector('#entrar-cpf');
-      K.ui.mascaras(el);
-      el.querySelector('[data-cpf]').addEventListener('click', e => {
-        inp.value = K.fmtCPF(e.currentTarget.dataset.cpf);
-        K.ui.erroCampo(inp, '');
-        inp.focus();
-      });
-      el.querySelector('#form-entrar').addEventListener('submit', e => {
-        e.preventDefault();
-        const cpf = K.soDigitos(inp.value);
-        if (!cpf) return K.ui.erroCampo(inp, 'Digite o seu CPF.');
-        if (!K.cpfValido(cpf)) return K.ui.erroCampo(inp, 'Esse CPF não é válido. Confira os 11 números.');
-        K.ui.erroCampo(inp, '');
-        const p = S().produtorPorCPF(cpf);
-        if (p) {
-          S().entrar(p.id);
-          if (p.aprovado) K.ui.toast(`Bem-vindo de volta, ${K.primeiroNome(p.nome)}.`);
-          K.ir(p.aprovado ? '#reservar' : '#analise');
-        } else {
-          S().sair();
-          K.rascunho = null;
-          K.cpfCadastro = cpf;
-          K.ir('#cadastro');
-        }
-      });
-    }
-  };
-
-  // ---------- Cadastro ----------
-  V.cadastro = {
-    area: 'publico',
-    titulo: 'Cadastro de produtor',
-    render() {
-      const cpf = K.cpfCadastro ? K.fmtCPF(K.cpfCadastro) : '';
-      return `
-        <div class="estreito">
-          <a class="voltar" href="#entrar">${K.icon('left', 16)}Voltar</a>
-          <header class="cab-pagina">
-            <p class="eyebrow">Primeiro acesso</p>
-            <h1>Cadastro de produtor</h1>
-            <p class="sub">${cpf ? `Não encontramos o CPF ${K.esc(cpf)}. ` : ''}Preencha uma vez e as próximas reservas saem em poucos toques.</p>
-          </header>
-          <form id="form-cadastro" class="form-grade" novalidate>
-            <fieldset>
-              <legend>Quem é você</legend>
-              <div class="campo campo-largo">
-                <label for="cad-nome">Nome completo ou nome do sítio</label>
-                <input id="cad-nome" type="text" autocomplete="name" placeholder="Ex.: Carlos Mendonça">
-              </div>
-              <div class="campo">
-                <label for="cad-cpf">CPF</label>
-                <input id="cad-cpf" type="text" inputmode="numeric" data-mascara="cpf" maxlength="14" value="${K.esc(cpf)}" placeholder="000.000.000-00">
-              </div>
-              <div class="campo">
-                <label for="cad-tel">WhatsApp</label>
-                <input id="cad-tel" type="tel" inputmode="numeric" data-mascara="tel" maxlength="15" placeholder="(00) 00000-0000">
-              </div>
-              <div class="campo campo-largo">
-                <label for="cad-email">E-mail <span class="opcional">opcional</span></label>
-                <input id="cad-email" type="email" autocomplete="email" placeholder="voce@exemplo.com">
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>O que você vende e como chega</legend>
-              <div class="campo campo-largo">
-                <label for="cad-produto">Produto principal</label>
-                <input id="cad-produto" type="text" placeholder="Ex.: Alface e rúcula, tomate, batata">
-              </div>
-              <div class="campo">
-                <label for="cad-veiculo">Veículo</label>
-                <input id="cad-veiculo" type="text" placeholder="Ex.: Caminhão baú">
-              </div>
-              <div class="campo">
-                <label for="cad-placa">Placa</label>
-                <input id="cad-placa" type="text" data-mascara="placa" maxlength="8" placeholder="ABC1D23" class="mono">
-              </div>
-              <div class="campo campo-largo">
-                <label for="cad-pessoas">Pessoas autorizadas a carregar e descarregar <span class="opcional">opcional</span></label>
-                <textarea id="cad-pessoas" rows="2" placeholder="Ex.: José (motorista) e Marcos (ajudante)"></textarea>
-              </div>
-            </fieldset>
-            <div class="form-acoes">
-              <button type="button" class="btn btn-ghost" id="cad-exemplo">${K.icon('refresh', 16)}Preencher exemplo</button>
-              <button type="submit" class="btn btn-primario">Enviar cadastro${K.icon('right', 18)}</button>
-            </div>
-          </form>
         </div>`;
     },
     mount(el) {
       K.ui.mascaras(el);
       const $ = id => el.querySelector('#' + id);
-      $('cad-exemplo').addEventListener('click', () => {
-        if (!K.cpfValido($('cad-cpf').value)) {
-          $('cad-cpf').value = K.fmtCPF(K.cpfComDV(String(100000000 + Math.floor(Math.random() * 899999999))));
-        }
-        $('cad-nome').value = 'Sítio Recanto Verde';
-        $('cad-tel').value = K.fmtTelefone('11990011223');
-        $('cad-email').value = 'contato@recantoverde.com.br';
-        $('cad-produto').value = 'Alface e rúcula (hidroponia)';
-        $('cad-veiculo').value = 'Caminhão baú';
-        $('cad-placa').value = 'KLD2B24';
-        $('cad-pessoas').value = 'José (motorista) e Marcos (ajudante)';
-        el.querySelectorAll('.campo').forEach(c => { const i = c.querySelector('input,textarea'); if (i) K.ui.erroCampo(i, ''); });
-      });
+      const cpf = $('entrar-cpf');
+      const nome = $('entrar-nome');
+      const produto = $('entrar-produto');
+      const retorno = $('entrar-retorno');
 
-      $('form-cadastro').addEventListener('submit', e => {
+      // CPF já cadastrado: avisa e preenche o resto
+      const conferirCPF = () => {
+        const p = K.cpfValido(cpf.value) ? S().produtorPorCPF(cpf.value) : null;
+        retorno.hidden = !p;
+        if (!p) return;
+        retorno.innerHTML = `${K.icon('check', 14)}Que bom te ver de novo, ${K.esc(K.primeiroNome(p.nome))}!`;
+        if (!nome.value.trim()) { nome.value = p.nome; K.ui.erroCampo(nome, ''); }
+        if (!produto.value.trim()) { produto.value = p.produto; K.ui.erroCampo(produto, ''); }
+      };
+      cpf.addEventListener('input', conferirCPF);
+      [cpf, nome, produto].forEach(inp => inp.addEventListener('input', () => K.ui.erroCampo(inp, '')));
+
+      el.querySelector('[data-cpf]').addEventListener('click', e => {
+        cpf.value = K.fmtCPF(e.currentTarget.dataset.cpf);
+        K.ui.erroCampo(cpf, '');
+        conferirCPF();
+        cpf.focus();
+      });
+      el.querySelectorAll('[data-produto]').forEach(b => b.addEventListener('click', () => {
+        produto.value = b.dataset.produto;
+        K.ui.erroCampo(produto, '');
+        produto.focus();
+      }));
+
+      $('form-entrar').addEventListener('submit', e => {
         e.preventDefault();
         const regras = [
-          ['cad-nome', v => v.trim().length >= 3 ? '' : 'Informe o nome com pelo menos 3 letras.'],
-          ['cad-cpf', v => !K.cpfValido(v) ? 'CPF inválido. Confira os 11 números.'
-            : S().produtorPorCPF(v) ? 'Esse CPF já tem cadastro. Volte e entre com ele.' : ''],
-          ['cad-tel', v => K.soDigitos(v).length >= 10 ? '' : 'Informe o WhatsApp com DDD.'],
-          ['cad-email', v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'E-mail incompleto. Deixe em branco se preferir.'],
-          ['cad-produto', v => v.trim() ? '' : 'Diga o que você costuma vender.'],
-          ['cad-veiculo', v => v.trim() ? '' : 'Informe o veículo.'],
-          ['cad-placa', v => K.placaValida(v) ? '' : 'Placa no formato ABC1D23 ou ABC-1234.']
+          [cpf, !K.soDigitos(cpf.value) ? 'Digite o seu CPF.'
+            : !K.cpfValido(cpf.value) ? 'Esse CPF não é válido. Confira os 11 números.' : ''],
+          [nome, nome.value.trim().length >= 3 ? '' : 'Escreva o seu nome.'],
+          [produto, produto.value.trim() ? '' : 'Diga o que você está trazendo.']
         ];
         let primeiroErro = null;
-        regras.forEach(([id, fn]) => {
-          const msg = fn($(id).value);
-          K.ui.erroCampo($(id), msg);
-          if (msg && !primeiroErro) primeiroErro = $(id);
+        regras.forEach(([inp, msg]) => {
+          K.ui.erroCampo(inp, msg);
+          if (msg && !primeiroErro) primeiroErro = inp;
         });
         if (primeiroErro) { primeiroErro.focus(); return; }
 
-        const p = S().cadastrar({
-          nome: $('cad-nome').value.trim(),
-          cpf: K.soDigitos($('cad-cpf').value),
-          telefone: K.soDigitos($('cad-tel').value),
-          email: $('cad-email').value.trim(),
-          produto: $('cad-produto').value.trim(),
-          veiculo: $('cad-veiculo').value.trim(),
-          placa: K.normPlaca($('cad-placa').value),
-          pessoas: $('cad-pessoas').value.trim()
-        });
-        K.cpfCadastro = null;
+        let p = S().produtorPorCPF(cpf.value);
+        if (p) {
+          p.nome = nome.value.trim();
+          p.produto = produto.value.trim();
+          S().salvar();
+          K.ui.toast(`Bem-vindo de volta, ${K.primeiroNome(p.nome)}.`);
+        } else {
+          p = S().cadastrar({
+            cpf: K.soDigitos(cpf.value),
+            nome: nome.value.trim(),
+            produto: produto.value.trim(),
+            telefone: '',
+            email: '',
+            veiculo: '',
+            placa: '',
+            pessoas: ''
+          });
+          K.ui.toast(`Cadastro feito. Bem-vindo, ${K.primeiroNome(p.nome)}!`);
+        }
         S().entrar(p.id);
-        K.ir('#analise');
+        K.rascunho = null;
+        K.ir('#reservar');
       });
-    }
-  };
-
-  // ---------- Verificação do cadastro ----------
-  const PASSOS_ANALISE = [
-    'Dados cadastrais recebidos',
-    'CPF consultado na Receita Federal',
-    'Placa e veículo conferidos',
-    'Registro de produtor rural confirmado',
-    'Liberação para reservas'
-  ];
-
-  V.analise = {
-    area: 'produtor',
-    titulo: 'Verificação do cadastro',
-    guarda() {
-      const p = S().logado();
-      if (!p) return '#entrar';
-      return null;
-    },
-    render() {
-      const p = S().logado();
-      return `
-        <div class="estreito">
-          <div class="analise" id="analise">
-            <div class="analise-cab">
-              <div class="radar" aria-hidden="true"><span></span>${K.icon('shield', 30)}</div>
-              <h1 id="analise-tit">Verificando seu cadastro</h1>
-              <p class="sub" id="analise-sub">Isso leva alguns segundos. Pode deixar esta tela aberta.</p>
-            </div>
-            <div class="barra" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progresso da verificação"><span id="analise-barra"></span></div>
-            <ol class="checklist" id="analise-passos">
-              ${PASSOS_ANALISE.map(t => `<li><span class="check-ic">${K.icon('check', 14)}</span>${t}</li>`).join('')}
-            </ol>
-            <dl class="resumo-cadastro">
-              <div><dt>Nome</dt><dd>${K.esc(p.nome)}</dd></div>
-              <div><dt>CPF</dt><dd class="mono">${K.cpfOculto(p.cpf)}</dd></div>
-              <div><dt>Produto</dt><dd>${K.esc(p.produto)}</dd></div>
-              <div><dt>Veículo</dt><dd>${K.esc(p.veiculo)} · <span class="mono">${K.esc(K.fmtPlaca(p.placa))}</span></dd></div>
-            </dl>
-            <div id="analise-fim"></div>
-          </div>
-        </div>`;
-    },
-    mount(el) {
-      const p = S().logado();
-      const itens = el.querySelectorAll('#analise-passos li');
-      const barra = el.querySelector('#analise-barra');
-      const prog = el.querySelector('[role=progressbar]');
-      const concluir = animar => {
-        p.aprovado = true;
-        S().salvar();
-        itens.forEach(li => { li.classList.remove('ativo'); li.classList.add('feito'); });
-        barra.style.width = '100%';
-        prog.setAttribute('aria-valuenow', '100');
-        el.querySelector('#analise').classList.add('aprovado');
-        el.querySelector('#analise-tit').textContent = 'Cadastro aprovado';
-        el.querySelector('#analise-sub').textContent = `Tudo certo, ${K.primeiroNome(p.nome)}. Você já pode reservar pedras.`;
-        el.querySelector('#analise-fim').innerHTML = `
-          <a class="btn btn-primario btn-bloco" href="#reservar">Escolher minhas pedras${K.icon('right', 18)}</a>
-          <p class="contagem" aria-live="polite">Abrindo o mapa em <strong id="contagem">5</strong> s</p>`;
-        if (animar) K.ui.chime();
-        let s = 5;
-        K.every(() => {
-          s -= 1;
-          const c = el.querySelector('#contagem');
-          if (c) c.textContent = s;
-          if (s <= 0) K.ir('#reservar');
-        }, 1000);
-      };
-
-      if (p.aprovado) { concluir(false); return; }
-
-      itens.forEach((li, i) => {
-        K.later(() => {
-          itens.forEach(x => x.classList.remove('ativo'));
-          li.classList.add('ativo');
-          if (i > 0) itens[i - 1].classList.add('feito');
-          const pct = Math.round(((i + 0.5) / itens.length) * 100);
-          barra.style.width = pct + '%';
-          prog.setAttribute('aria-valuenow', String(pct));
-        }, 300 + i * 850);
-      });
-      K.later(() => concluir(true), 300 + itens.length * 850);
     }
   };
 

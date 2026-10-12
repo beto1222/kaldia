@@ -48,13 +48,13 @@
       direita = `<span class="selo-perfil">${K.icon('shield', 16)}<span>Fiscal de pátio</span></span>
         <a class="icon-btn" href="#inicio" aria-label="Sair da área do fiscal" title="Sair">${K.icon('logout', 18)}</a>`;
     } else if (area === 'produtor' && p) {
-      if (p.aprovado) nav = NAV.produtor.map(([r, t, i]) => `<a href="#${r}" class="nav-link" ${r === rota ? 'aria-current="page"' : ''}>${K.icon(i, 18)}<span>${t}</span></a>`).join('');
+      nav = NAV.produtor.map(([r, t, i]) => `<a href="#${r}" class="nav-link" ${r === rota ? 'aria-current="page"' : ''}>${K.icon(i, 18)}<span>${t}</span></a>`).join('');
       direita = `<span class="selo-perfil"><span class="avatar avatar-sm">${K.esc(K.iniciais(p.nome))}</span><span>${K.esc(K.primeiroNome(p.nome))}</span></span>
         <button type="button" class="icon-btn" id="btn-sair" aria-label="Sair da conta" title="Sair">${K.icon('logout', 18)}</button>`;
     } else {
       nav = `<a href="#consulta" class="nav-link" ${rota === 'consulta' ? 'aria-current="page"' : ''}>${K.icon('search', 18)}<span>Consultar reserva</span></a>
         <a href="#painel" class="nav-link">${K.icon('shield', 18)}<span>Área do fiscal</span></a>`;
-      direita = p && p.aprovado
+      direita = p
         ? `<a class="btn btn-primario btn-sm" href="#reservar">${K.icon('user', 16)}${K.esc(K.primeiroNome(p.nome))}</a>`
         : `<a class="btn btn-primario btn-sm" href="#entrar">${K.icon('login', 16)}Entrar</a>`;
     }

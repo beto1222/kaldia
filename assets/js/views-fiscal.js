@@ -188,8 +188,9 @@
         <div class="painel-estado">${K.ui.pill(r.status, 'fiscal')}<span class="mono sutil">${K.esc(r.codigo)}</span></div>
         <dl class="ficha">
           <div><dt>Produtor</dt><dd>${K.esc(r.produtor)}</dd></div>
-          ${p ? `<div><dt>WhatsApp</dt><dd class="mono">${K.esc(K.fmtTelefone(p.telefone))}</dd></div>
-          <div><dt>Veículo</dt><dd>${K.esc(p.veiculo)} · <span class="mono">${K.esc(K.fmtPlaca(p.placa))}</span></dd></div>` : ''}
+          ${p && p.telefone ? `<div><dt>WhatsApp</dt><dd class="mono">${K.esc(K.fmtTelefone(p.telefone))}</dd></div>` : ''}
+          ${p && (p.veiculo || p.placa) ? `<div><dt>Veículo</dt><dd>${K.esc([p.veiculo, K.fmtPlaca(p.placa)].filter(Boolean).join(' · '))}</dd></div>` : ''}
+          ${p ? `<div><dt>CPF</dt><dd class="mono">${K.cpfOculto(p.cpf)}</dd></div>` : ''}
           <div><dt>Produto</dt><dd>${K.esc(r.produto || '—')}</dd></div>
           <div><dt>Volume declarado</dt><dd>${K.esc(r.qtd || '—')}</dd></div>
           <div><dt>Pagamento</dt><dd>${K.fmtMoeda(r.valor)} · ${K.esc(K.PAGAMENTOS[r.pagamento])}</dd></div>
@@ -577,7 +578,7 @@
                 const ult = sit === 'ativo_locado' ? 'Reserva ativa' : dias === null ? 'Nunca' : `há ${dias} dia${dias === 1 ? '' : 's'}`;
                 const podeConvidar = sit === 'inativo' || sit === 'ativo_sem_locacao';
                 return `<tr>
-                  <td data-rot="Produtor"><div class="pessoa"><span class="avatar">${K.esc(K.iniciais(p.nome))}</span><span><strong>${K.esc(p.nome)}</strong><span class="mono sutil">${K.esc(K.fmtTelefone(p.telefone))}</span></span></div></td>
+                  <td data-rot="Produtor"><div class="pessoa"><span class="avatar">${K.esc(K.iniciais(p.nome))}</span><span><strong>${K.esc(p.nome)}</strong><span class="mono sutil">${p.telefone ? K.esc(K.fmtTelefone(p.telefone)) : K.cpfOculto(p.cpf)}</span></span></div></td>
                   <td data-rot="Produto">${K.esc(p.produto)}</td>
                   <td data-rot="Última reserva">${ult}</td>
                   <td data-rot="Situação"><span class="pill pill-${tom}"><span class="pill-dot"></span>${rot}</span></td>

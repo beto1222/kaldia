@@ -69,7 +69,7 @@
         <section class="como" aria-labelledby="como-tit">
           <h2 id="como-tit">Como funciona a reserva</h2>
           <ol class="passos">
-            <li><span class="passo-n">1</span><div><strong>Cadastro com CPF</strong><p>Informe seus dados, o veículo e quem pode descarregar. A verificação leva segundos.</p></div></li>
+            <li><span class="passo-n">1</span><div><strong>Cadastro na hora</strong><p>CPF, nome e o que você está trazendo. Só isso: a conta fica pronta na mesma tela.</p></div></li>
             <li><span class="passo-n">2</span><div><strong>Escolha da pedra</strong><p>Veja o mapa do dia, escolha até ${K.MAX_BOXES} pedras livres e pague por PIX ou cartão.</p></div></li>
             <li><span class="passo-n">3</span><div><strong>Check-in na chegada</strong><p>Mostre o QR Code na portaria e confirme o check-in. A pedra é sua até o fim do pregão.</p></div></li>
           </ol>

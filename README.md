@@ -21,9 +21,8 @@ Também funciona publicado no GitHub Pages (Settings › Pages › branch princi
 ## O que tem
 
 **Produtor**
-- Entrada por CPF com máscara e validação dos dígitos verificadores
-- Cadastro com WhatsApp, veículo, placa (antiga ou Mercosul) e pessoas autorizadas
-- Verificação animada do cadastro
+- Cadastro e entrada na mesma tela: CPF, nome e o que está trazendo. CPF novo cria a
+  conta na hora; CPF já cadastrado entra direto (nome e produto são preenchidos sozinhos)
 - Mapa do pátio por data (hoje + 6 dias ou qualquer data futura), até 3 pedras por dia
 - Pagamento por PIX (QR Code e "copia e cola" no padrão BR Code, com CRC16) ou cartão
 - Bilhete da reserva com código `KLD-XXXXX` e QR Code para a portaria
@@ -47,8 +46,8 @@ Não há backend: tudo fica salvo no `localStorage` do navegador. As reservas de
 são renovadas a cada dia, preservando o que você criou. O link "Restaurar dados de
 exemplo", no rodapé, volta tudo ao estado inicial.
 
-Para testar como produtor já aprovado, use o CPF **529.982.247-25**. Qualquer outro
-CPF válido abre o cadastro.
+Para testar como produtor já cadastrado, use o CPF **529.982.247-25**. Qualquer outro
+CPF válido cria uma conta nova na hora.
 
 ## Estrutura
 

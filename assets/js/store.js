@@ -224,7 +224,7 @@
     cadastrar(dados) {
       const p = {
         id: 'p' + K.uid(),
-        aprovado: false,
+        aprovado: true,
         exemplo: false,
         criadoEm: K.hoje(),
         ultimaLocacao: null,
