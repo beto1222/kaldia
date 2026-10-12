@@ -68,5 +68,6 @@ v1/                        versão anterior
 ## Próximos passos sugeridos
 
 - Backend com banco de dados e login real (Supabase ou Firebase)
-- Integração com um provedor de PIX e com a API do WhatsApp
+- Integração com a API do WhatsApp
+- Pagamento real (provedor de PIX/cartão) quando sair da fase de demonstração; por enquanto o pagamento é simulado
 - PWA para instalar no celular
