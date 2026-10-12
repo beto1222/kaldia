@@ -1,5 +1,7 @@
 # Rode no Unreal Editor: Tools > Execute Python Script... > este arquivo.
 # Cria o material PBR base, importa os sons de AudioFonte/ e cria o mapa L_CidadeMorta.
+# Os sons já vêm prontos em AudioFonte/ (gerados por Scripts/gerar_audio.py). Para regenerá-los
+# ou trocar algum por uma gravação real, mantenha o mesmo nome de arquivo e rode este script de novo.
 import os
 import unreal
 
@@ -40,7 +42,7 @@ def criar_material():
 
 def importar_audio():
     if not os.path.isdir(AUDIO_SRC):
-        unreal.log_warning("Ruptura: pasta AudioFonte não encontrada, pulando áudio")
+        unreal.log_warning("Ruptura: pasta AudioFonte não encontrada. Rode 'python3 Scripts/gerar_audio.py' fora do editor e execute este script de novo.")
         return
     tasks = []
     for f in sorted(os.listdir(AUDIO_SRC)):

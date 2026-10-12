@@ -11,6 +11,7 @@ enum class ERupturaDifficulty : uint8
 	Dificil
 };
 
+/** Etapas do roteiro. Os nomes internos são da versão original; os textos exibidos ficam em StageText. */
 UENUM(BlueprintType)
 enum class EMissionStage : uint8
 {
@@ -37,20 +38,24 @@ enum class EEnemyAlert : uint8
 	Morto
 };
 
-/** Parâmetros de comportamento inimigo derivados da dificuldade. */
+/** Parâmetros dos infectados derivados da dificuldade. */
 USTRUCT(BlueprintType)
 struct FEnemyTuning
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float MaxHealth = 100.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float ShotDamage = 8.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float SpreadDeg = 4.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float ReactionTime = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float MaxHealth = 110.f;
+	/** Dano de cada golpe corpo a corpo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float MeleeDamage = 20.f;
+	/** Tempo mínimo entre o início de dois golpes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float AttackInterval = 1.5f;
+	/** Duração da preparação do golpe (janela para o jogador reagir). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float AttackWindup = 0.45f;
+	/** Velocidade ao perseguir o jogador (cm/s). Kael corre a 600. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float ChaseSpeed = 430.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float DetectionRate = 1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float FlankChance = 0.35f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float BurstTime = 1.4f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float FireInterval = 0.15f;
+	/** Fração do dano recebido que vira atordoamento (interrompe ataques). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ruptura") float StaggerResist = 1.f;
 };
 
 struct RUPTURA_API FRupturaTuning

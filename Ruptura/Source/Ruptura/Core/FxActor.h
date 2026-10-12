@@ -10,7 +10,8 @@ class UPointLightComponent;
 
 /**
  * Efeito visual efêmero feito de geometria 3D + luz dinâmica (traçantes, clarões, faíscas, explosões).
- * É o substituto funcional dos sistemas Niagara enquanto não há assets de partículas no projeto.
+ * É o substituto funcional dos sistemas Niagara enquanto não há assets de partículas no projeto
+ * (sangue, poças, ácido, poeira caindo do teto, clarões de disparo).
  */
 UCLASS()
 class RUPTURA_API AFxActor : public AActor
@@ -50,4 +51,12 @@ namespace RupturaFx
 	RUPTURA_API void Sparks(UWorld* World, const FVector& Location, const FLinearColor& Color, int32 Count, float Speed = 500.f);
 	RUPTURA_API void Explosion(UWorld* World, const FVector& Location, float Radius);
 	RUPTURA_API void Smoke(UWorld* World, const FVector& Location, float Size, float Lifetime);
+	/** Jato de gotas de sangue na direção Dir (com gravidade) + névoa vermelha. */
+	RUPTURA_API void Blood(UWorld* World, const FVector& Location, const FVector& Dir, int32 Count);
+	/** Poça de sangue que se espalha no chão abaixo de Location (dura ~45 s). */
+	RUPTURA_API void BloodPool(UWorld* World, const FVector& Location, float Size);
+	/** Respingo do vômito ácido do Hospedeiro. */
+	RUPTURA_API void AcidSplash(UWorld* World, const FVector& Location, float Radius);
+	/** Poeira e fragmentos caindo do teto (estrutura cedendo). */
+	RUPTURA_API void CeilingDust(UWorld* World, const FVector& Location);
 }

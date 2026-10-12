@@ -12,10 +12,14 @@ enum class EPickupType : uint8
 {
 	Vida,
 	Municao,
-	Granada
+	Granada,
+	Bateria
 };
 
-/** Item coletado automaticamente ao passar por cima (kit médico, munição, granadas). */
+/**
+ * Item coletado automaticamente ao passar por cima (kit médico, munição, granada, pilhas).
+ * Fica largado no chão, sem girar nem flutuar; só um reflexo fraco ajuda a achá-lo no escuro.
+ */
 UCLASS()
 class RUPTURA_API APickup : public AActor
 {

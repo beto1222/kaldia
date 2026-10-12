@@ -18,11 +18,11 @@
 
 namespace
 {
-	// Trajeto da câmera de abertura: desce sobre a rua em direção à instalação militar.
-	const FVector IntroFrom(-700.f, 250.f, 950.f);
-	const FVector IntroTo(900.f, -250.f, 330.f);
-	const FVector IntroLook(6500.f, 0.f, 250.f);
-	constexpr float IntroDuration = 10.f;
+	// Trajeto da câmera de abertura: desce lentamente sobre a avenida morta, na direção da instalação.
+	const FVector IntroFrom(-600.f, 300.f, 1100.f);
+	const FVector IntroTo(500.f, -150.f, 240.f);
+	const FVector IntroLook(6500.f, 0.f, 200.f);
+	constexpr float IntroDuration = 17.f;
 }
 
 AKaelPlayerController::AKaelPlayerController()
@@ -52,7 +52,7 @@ void AKaelPlayerController::BeginPlay()
 	if (GI && !GI->bIntroSeen && GI->CheckpointStage == EMissionStage::Explorar)
 	{
 		GI->bIntroSeen = true;
-		PlayCinematic(IntroFrom, IntroTo, IntroLook, IntroDuration, FText::FromString(TEXT("Setor 7 — 02:40. Tempestade sobre a cidade evacuada.")), true);
+		PlayCinematic(IntroFrom, IntroTo, IntroLook, IntroDuration, FText::FromString(TEXT("Setor 7 — 03:13. Setenta e duas horas sem contato.")), true);
 	}
 	else
 	{
@@ -76,6 +76,7 @@ void AKaelPlayerController::BuildInput()
 
 	IA_Skip = MakeAction(TEXT("IA_PularCena"));
 	IA_Help = MakeAction(TEXT("IA_Ajuda"));
+	IA_Status = MakeAction(TEXT("IA_Estado"));
 	IA_Restart = MakeAction(TEXT("IA_Reiniciar"));
 	IA_Q0 = MakeAction(TEXT("IA_QualidadeBaixa"));
 	IA_Q1 = MakeAction(TEXT("IA_QualidadeMedia"));
@@ -90,6 +91,8 @@ void AKaelPlayerController::BuildInput()
 	Mapping->MapKey(IA_Skip, EKeys::Enter);
 	Mapping->MapKey(IA_Skip, EKeys::Gamepad_Special_Right);
 	Mapping->MapKey(IA_Help, EKeys::H);
+	Mapping->MapKey(IA_Status, EKeys::Tab);
+	Mapping->MapKey(IA_Status, EKeys::Gamepad_Special_Left);
 	Mapping->MapKey(IA_Restart, EKeys::Enter);
 	Mapping->MapKey(IA_Restart, EKeys::Gamepad_Special_Right);
 	Mapping->MapKey(IA_Q0, EKeys::F5);
@@ -113,6 +116,8 @@ void AKaelPlayerController::SetupInputComponent()
 	}
 	EIC->BindAction(IA_Skip, ETriggerEvent::Started, this, &AKaelPlayerController::Input_Skip);
 	EIC->BindAction(IA_Help, ETriggerEvent::Started, this, &AKaelPlayerController::Input_Help);
+	EIC->BindAction(IA_Status, ETriggerEvent::Started, this, &AKaelPlayerController::Input_StatusStart);
+	EIC->BindAction(IA_Status, ETriggerEvent::Completed, this, &AKaelPlayerController::Input_StatusStop);
 	EIC->BindAction(IA_Restart, ETriggerEvent::Started, this, &AKaelPlayerController::Input_Restart);
 	EIC->BindAction(IA_Q0, ETriggerEvent::Started, this, &AKaelPlayerController::Input_QualityLow);
 	EIC->BindAction(IA_Q1, ETriggerEvent::Started, this, &AKaelPlayerController::Input_QualityMedium);
@@ -142,7 +147,7 @@ void AKaelPlayerController::PlayCinematic(const FVector& From, const FVector& To
 		CineCamera = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), From, (LookAt - From).Rotation(), Params);
 		if (CineCamera)
 		{
-			CineCamera->GetCameraComponent()->SetFieldOfView(68.f);
+			CineCamera->GetCameraComponent()->SetFieldOfView(62.f);
 			CineCamera->GetCameraComponent()->bConstrainAspectRatio = false;
 		}
 	}
@@ -242,7 +247,7 @@ void AKaelPlayerController::OnKaelDied()
 	}
 	EndState = EEndState::Dead;
 	EndStateTime = GetWorld()->GetTimeSeconds();
-	GetWorldTimerManager().SetTimer(ReloadTimer, this, &AKaelPlayerController::ReloadLevel, 4.5f, false);
+	GetWorldTimerManager().SetTimer(ReloadTimer, this, &AKaelPlayerController::ReloadLevel, 6.f, false);
 }
 
 void AKaelPlayerController::OnMissionComplete(float InFinalTime)
@@ -343,6 +348,17 @@ void AKaelPlayerController::Input_Help()
 bool AKaelPlayerController::IsHelpVisible() const
 {
 	return !bCinematic && EndState == EEndState::None && (bHelpToggled || GetWorld()->GetTimeSeconds() < HelpAutoUntil);
+}
+
+void AKaelPlayerController::Input_StatusStart()
+{
+	bStatusHeld = true;
+	RupturaAssets::PlaySound2D(this, TEXT("inventario"), 0.4f);
+}
+
+void AKaelPlayerController::Input_StatusStop()
+{
+	bStatusHeld = false;
 }
 
 void AKaelPlayerController::ShowToast(const FText& Text, float Duration)

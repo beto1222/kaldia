@@ -22,6 +22,8 @@ public:
 	void Configure(float InWidth, float InHeight, bool bNeedsKeycard, bool bLockedBySecurity, const FText& InName);
 	void Unlock();
 	void Open(bool bInstant = false);
+	/** Fecha a porta (com estrondo). bLock = fica travada até ser aberta por código (falta de energia). */
+	void Close(bool bInstant, bool bLock);
 	bool IsOpen() const { return bOpen; }
 
 	virtual FText GetInteractPrompt(const AKaelCharacter* Kael) const override;

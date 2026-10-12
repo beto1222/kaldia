@@ -6,23 +6,25 @@ FEnemyTuning FRupturaTuning::ForDifficulty(ERupturaDifficulty Difficulty, bool b
 	switch (Difficulty)
 	{
 	case ERupturaDifficulty::Facil:
-		T.MaxHealth = 70.f; T.ShotDamage = 5.f; T.SpreadDeg = 7.f; T.ReactionTime = 1.0f;
-		T.DetectionRate = 0.6f; T.FlankChance = 0.15f; T.BurstTime = 1.0f; T.FireInterval = 0.2f;
+		T.MaxHealth = 80.f; T.MeleeDamage = 12.f; T.AttackInterval = 1.9f; T.AttackWindup = 0.6f;
+		T.ChaseSpeed = 360.f; T.DetectionRate = 0.6f; T.StaggerResist = 0.7f;
 		break;
 	case ERupturaDifficulty::Dificil:
-		T.MaxHealth = 130.f; T.ShotDamage = 11.f; T.SpreadDeg = 2.8f; T.ReactionTime = 0.35f;
-		T.DetectionRate = 1.5f; T.FlankChance = 0.6f; T.BurstTime = 1.8f; T.FireInterval = 0.12f;
+		T.MaxHealth = 150.f; T.MeleeDamage = 28.f; T.AttackInterval = 1.2f; T.AttackWindup = 0.36f;
+		T.ChaseSpeed = 500.f; T.DetectionRate = 1.5f; T.StaggerResist = 1.4f;
 		break;
 	default:
 		break; // Normal = valores padrão da struct
 	}
 
+	// Mutante: maior, mais resistente e mais rápido. Grita e atrai os outros.
 	if (bElite)
 	{
-		T.MaxHealth *= 1.5f;
-		T.SpreadDeg *= 0.7f;
-		T.ReactionTime *= 0.7f;
-		T.FlankChance = FMath::Min(0.9f, T.FlankChance + 0.25f);
+		T.MaxHealth *= 1.9f;
+		T.MeleeDamage *= 1.35f;
+		T.AttackWindup *= 0.8f;
+		T.ChaseSpeed *= 1.15f;
+		T.StaggerResist *= 1.8f;
 	}
 	return T;
 }
@@ -31,9 +33,9 @@ FText FRupturaTuning::DifficultyName(ERupturaDifficulty Difficulty)
 {
 	switch (Difficulty)
 	{
-	case ERupturaDifficulty::Facil: return FText::FromString(TEXT("FÁCIL"));
-	case ERupturaDifficulty::Dificil: return FText::FromString(TEXT("DIFÍCIL"));
-	default: return FText::FromString(TEXT("NORMAL"));
+	case ERupturaDifficulty::Facil: return FText::FromString(TEXT("HISTÓRIA"));
+	case ERupturaDifficulty::Dificil: return FText::FromString(TEXT("PESADELO"));
+	default: return FText::FromString(TEXT("SOBREVIVÊNCIA"));
 	}
 }
 
@@ -41,17 +43,17 @@ FText FRupturaTuning::StageText(EMissionStage Stage)
 {
 	switch (Stage)
 	{
-	case EMissionStage::Explorar: return FText::FromString(TEXT("Explore a rua de entrada"));
-	case EMissionStage::EncontrarInstalacao: return FText::FromString(TEXT("Encontre a instalação militar"));
-	case EMissionStage::EnfrentarPatrulha: return FText::FromString(TEXT("Elimine a patrulha inimiga"));
-	case EMissionStage::RecuperarCartao: return FText::FromString(TEXT("Recupere o cartão de acesso no posto da guarda"));
-	case EMissionStage::EntrarSubsolo: return FText::FromString(TEXT("Entre na instalação subterrânea"));
-	case EMissionStage::DesativarSeguranca: return FText::FromString(TEXT("Desative o sistema de segurança no terminal"));
-	case EMissionStage::EnfrentarRobo: return FText::FromString(TEXT("Derrote o robô de combate COLOSSO"));
-	case EMissionStage::DestruirNucleo: return FText::FromString(TEXT("Destrua o núcleo de energia"));
-	case EMissionStage::Escapar: return FText::FromString(TEXT("Escape para o ponto de extração na rua"));
-	case EMissionStage::Concluida: return FText::FromString(TEXT("Missão concluída"));
-	case EMissionStage::Falhou: return FText::FromString(TEXT("Missão fracassada"));
+	case EMissionStage::Explorar: return FText::FromString(TEXT("Siga o sinal de socorro pela avenida"));
+	case EMissionStage::EncontrarInstalacao: return FText::FromString(TEXT("Encontre a entrada da instalação militar"));
+	case EMissionStage::EnfrentarPatrulha: return FText::FromString(TEXT("Sobreviva aos infectados do pátio"));
+	case EMissionStage::RecuperarCartao: return FText::FromString(TEXT("Pegue o cartão de acesso no posto da guarda"));
+	case EMissionStage::EntrarSubsolo: return FText::FromString(TEXT("Desça ao subsolo da instalação"));
+	case EMissionStage::DesativarSeguranca: return FText::FromString(TEXT("Restaure a energia na sala de controle"));
+	case EMissionStage::EnfrentarRobo: return FText::FromString(TEXT("Mate o HOSPEDEIRO"));
+	case EMissionStage::DestruirNucleo: return FText::FromString(TEXT("Destrua o núcleo do Protocolo Zero"));
+	case EMissionStage::Escapar: return FText::FromString(TEXT("Fuja para a avenida antes do colapso"));
+	case EMissionStage::Concluida: return FText::FromString(TEXT("Você sobreviveu"));
+	case EMissionStage::Falhou: return FText::FromString(TEXT("Soterrado"));
 	default: return FText::GetEmpty();
 	}
 }

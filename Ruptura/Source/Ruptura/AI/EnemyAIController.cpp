@@ -1,7 +1,6 @@
 ﻿#include "AI/EnemyAIController.h"
 #include "AI/EnemyCharacter.h"
 #include "Player/KaelCharacter.h"
-#include "Combat/Grenade.h"
 #include "Core/RupturaAssets.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
@@ -15,9 +14,9 @@
 
 namespace
 {
-	constexpr float WalkSpeed = 190.f;
-	constexpr float AlertSpeed = 300.f;
-	constexpr float RunSpeed = 470.f;
+	constexpr float ShambleSpeed = 105.f;   // arrastando os pés
+	constexpr float InvestigateSpeed = 175.f;
+	constexpr float LoseTrackTime = 7.f;    // segundos sem ver o jogador até desistir da perseguição
 }
 
 AEnemyAIController::AEnemyAIController()
@@ -26,17 +25,18 @@ AEnemyAIController::AEnemyAIController()
 
 	UAIPerceptionComponent* Perception = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("Perception"));
 
+	// Visão ruim, audição excelente.
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-	SightConfig->SightRadius = 3200.f;
-	SightConfig->LoseSightRadius = 3800.f;
-	SightConfig->PeripheralVisionAngleDegrees = 65.f;
+	SightConfig->SightRadius = 2600.f;
+	SightConfig->LoseSightRadius = 3000.f;
+	SightConfig->PeripheralVisionAngleDegrees = 60.f;
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
 	SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
 	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
 	SightConfig->SetMaxAge(4.f);
 
 	HearingConfig = CreateDefaultSubobject<UAISenseConfig_Hearing>(TEXT("HearingConfig"));
-	HearingConfig->HearingRange = 4000.f;
+	HearingConfig->HearingRange = 4500.f;
 	HearingConfig->DetectionByAffiliation.bDetectEnemies = true;
 	HearingConfig->DetectionByAffiliation.bDetectNeutrals = true;
 	HearingConfig->DetectionByAffiliation.bDetectFriendlies = true;
@@ -55,13 +55,13 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
 	if (Enemy)
 	{
 		HomeLocation = Enemy->GetActorLocation();
-		Enemy->SetMoveSpeed(WalkSpeed);
+		Enemy->SetMoveSpeed(ShambleSpeed);
 	}
 	if (UAIPerceptionComponent* Perception = GetPerceptionComponent())
 	{
 		Perception->OnTargetPerceptionUpdated.AddUniqueDynamic(this, &AEnemyAIController::OnPerceptionUpdated);
 	}
-	WaitUntil = Now() + FMath::FRandRange(0.f, 2.f);
+	WaitUntil = Now() + FMath::FRandRange(0.f, 3.f);
 }
 
 float AEnemyAIController::Now() const
@@ -87,7 +87,6 @@ FVector AEnemyAIController::PlayerAimPoint() const
 	{
 		return LastKnownLocation;
 	}
-	// Mira no tronco (mais baixo se estiver agachado atrás de cobertura).
 	const ACharacter* C = Cast<ACharacter>(P);
 	const float Up = (C && C->bIsCrouched) ? 15.f : 35.f;
 	return P->GetActorLocation() + FVector(0.f, 0.f, Up);
@@ -111,7 +110,7 @@ EEnemyAlert AEnemyAIController::GetAlert() const
 
 void AEnemyAIController::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
-	if (!Enemy || Enemy->IsDead() || !Enemy->IsActive() || State == EState::Morto)
+	if (!Enemy || Enemy->IsDead() || State == EState::Morto)
 	{
 		return;
 	}
@@ -126,33 +125,77 @@ void AEnemyAIController::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus
 		return;
 	}
 
-	if (Stimulus.Type == HearingConfig->GetSenseID() && Stimulus.WasSuccessfullySensed())
+	if (Stimulus.Type != HearingConfig->GetSenseID() || !Stimulus.WasSuccessfullySensed())
 	{
-		// Só reage a sons causados pelo jogador (tiros de aliados são tratados pelo alerta em grupo).
-		if (Actor != Player || !IsPlayerAlive())
-		{
-			return;
-		}
-		const FVector Where = Stimulus.StimulusLocation;
-		const float Dist = FVector::Dist(Where, Enemy->GetActorLocation());
-		const bool bLoud = Stimulus.Tag == FName(TEXT("Tiro")) || Stimulus.Tag == FName(TEXT("Explosao"));
+		return;
+	}
+	// Só reage a sons causados pelo jogador (os gritos dos outros são tratados pelo alerta em grupo).
+	if (Actor != Player || !IsPlayerAlive())
+	{
+		return;
+	}
+	const FVector Where = Stimulus.StimulusLocation;
+	const float Dist = FVector::Dist(Where, Enemy->GetActorLocation());
+	const bool bLoud = Stimulus.Tag == FName(TEXT("Tiro")) || Stimulus.Tag == FName(TEXT("Explosao"));
 
-		if (State == EState::Combate)
+	// Um tiro por perto acorda quem está fingindo de morto.
+	if (Enemy->IsDormant())
+	{
+		if ((bLoud && Dist < 1300.f) || Dist < 450.f)
 		{
-			if (Now() - LastSeenTime > 2.f)
-			{
-				LastKnownLocation = Where;
-			}
+			Enemy->Wake();
 		}
-		else if (bLoud && Dist < 2000.f)
+		return;
+	}
+	if (!Enemy->IsActive())
+	{
+		return;
+	}
+
+	if (State == EState::Combate)
+	{
+		if (Now() - LastSeenTime > 1.5f)
 		{
-			AlertTo(Where, true);
-		}
-		else
-		{
-			AlertTo(Where, false);
+			LastKnownLocation = Where;
 		}
 	}
+	else if (bLoud && Dist < 2800.f)
+	{
+		AlertTo(Where, true); // tiros atraem a horda direto para o atirador
+	}
+	else
+	{
+		AlertTo(Where, false);
+	}
+}
+
+float AEnemyAIController::GetVisibilityFactor(const AKaelCharacter* Kael, float Dist) const
+{
+	if (!Kael)
+	{
+		return 1.f;
+	}
+	float Factor = 1.f;
+	if (Kael->IsFlashlightOn())
+	{
+		Factor = 1.4f;
+		// O feixe batendo no rosto do infectado denuncia o jogador na hora.
+		const FVector ToEnemy = Enemy->GetActorLocation() + FVector(0.f, 0.f, 60.f) - Kael->GetFlashlightLocation();
+		if (ToEnemy.Size() < 2800.f && FVector::DotProduct(Kael->GetFlashlightDirection(), ToEnemy.GetSafeNormal()) > 0.88f)
+		{
+			Factor = 3.5f;
+		}
+	}
+	else
+	{
+		// No escuro, só a uma distância curta.
+		Factor = Dist < 650.f ? 1.f : (Dist < 1200.f ? 0.3f : 0.06f);
+	}
+	if (Kael->bIsCrouched)
+	{
+		Factor *= 0.5f;
+	}
+	return Factor;
 }
 
 void AEnemyAIController::UpdateDetection(float DeltaSeconds)
@@ -166,17 +209,11 @@ void AEnemyAIController::UpdateDetection(float DeltaSeconds)
 	{
 		const float Dist = FVector::Dist(Player->GetActorLocation(), Enemy->GetActorLocation());
 		float Rate = Enemy->GetTuning().DetectionRate;
-		Rate *= Dist < 700.f ? 4.f : (Dist < 1500.f ? 1.6f : (Dist < 2500.f ? 0.9f : 0.5f));
-		if (const ACharacter* C = Cast<ACharacter>(Player))
-		{
-			if (C->bIsCrouched)
-			{
-				Rate *= 0.5f;
-			}
-		}
+		Rate *= Dist < 500.f ? 5.f : (Dist < 1000.f ? 2.f : (Dist < 1800.f ? 0.9f : 0.4f));
+		Rate *= GetVisibilityFactor(Cast<AKaelCharacter>(Player), Dist);
 		if (State == EState::Investigando || State == EState::Buscando)
 		{
-			Rate *= 1.8f;
+			Rate *= 1.6f;
 		}
 		Detection = FMath::Min(1.f, Detection + DeltaSeconds * Rate);
 
@@ -194,7 +231,7 @@ void AEnemyAIController::UpdateDetection(float DeltaSeconds)
 	}
 	else
 	{
-		Detection = FMath::Max(0.f, Detection - DeltaSeconds * 0.2f);
+		Detection = FMath::Max(0.f, Detection - DeltaSeconds * 0.15f);
 	}
 }
 
@@ -209,7 +246,7 @@ void AEnemyAIController::AlertTo(const FVector& Location, bool bCombat)
 		LastKnownLocation = Location;
 		if (State != EState::Combate)
 		{
-			LastSeenTime = Now() - 1.5f; // sabe a direção, mas ainda não vê o jogador
+			LastSeenTime = Now() - 1.f; // sabe a direção, mas ainda não vê o jogador
 			Detection = 1.f;
 			EnterState(EState::Combate);
 		}
@@ -230,11 +267,8 @@ void AEnemyAIController::NotifyDamaged(AActor* InstigatorActor)
 	}
 	if (InstigatorActor && InstigatorActor == GetPlayer())
 	{
-		const bool bWasInCombat = State == EState::Combate;
 		AlertTo(InstigatorActor->GetActorLocation(), true);
-		LastSeenTime = Now() - (bWasInCombat ? 0.f : 1.f);
-		bHasCover = false; // fui atingido: reavaliar posição
-		NextDecision = 0.f;
+		LastSeenTime = Now();
 	}
 }
 
@@ -245,7 +279,7 @@ void AEnemyAIController::NotifyDeath()
 	ClearFocus(EAIFocusPriority::Gameplay);
 }
 
-void AEnemyAIController::BroadcastAlert()
+void AEnemyAIController::BroadcastAlert(float Radius)
 {
 	LastAlertBroadcast = Now();
 	for (TActorIterator<AEnemyCharacter> It(GetWorld()); It; ++It)
@@ -255,7 +289,7 @@ void AEnemyAIController::BroadcastAlert()
 		{
 			continue;
 		}
-		if (FVector::Dist(Other->GetActorLocation(), Enemy->GetActorLocation()) > 3000.f)
+		if (FVector::Dist(Other->GetActorLocation(), Enemy->GetActorLocation()) > Radius)
 		{
 			continue;
 		}
@@ -283,51 +317,49 @@ void AEnemyAIController::EnterState(EState NewState)
 	State = NewState;
 	StateTime = 0.f;
 	bMoveIssued = false;
+	bChasing = false;
 
 	switch (NewState)
 	{
 	case EState::Patrulha:
-		Enemy->SetMoveSpeed(WalkSpeed);
+		Enemy->SetMoveSpeed(ShambleSpeed);
 		Enemy->SetCombatStance(false);
-		Enemy->UnCrouch();
 		ClearFocus(EAIFocusPriority::Gameplay);
 		Detection = 0.f;
 		StopMove();
 		break;
 
 	case EState::Investigando:
-		Enemy->SetMoveSpeed(AlertSpeed);
+		Enemy->SetMoveSpeed(InvestigateSpeed);
 		Enemy->SetCombatStance(false);
 		ClearFocus(EAIFocusPriority::Gameplay);
 		StopMove();
 		if (Old == EState::Patrulha)
 		{
-			RupturaAssets::PlaySound3D(this, TEXT("inimigo_suspeita"), Enemy->GetActorLocation(), 0.8f);
+			RupturaAssets::PlaySound3D(this, TEXT("infectado_gemido"), Enemy->GetActorLocation() + FVector(0.f, 0.f, 70.f), 0.9f, FMath::FRandRange(0.8f, 1.f));
 		}
 		break;
 
 	case EState::Combate:
-		Enemy->SetMoveSpeed(RunSpeed);
+		Enemy->SetMoveSpeed(Enemy->GetTuning().ChaseSpeed);
 		Enemy->SetCombatStance(true);
-		bHasCover = false;
-		bFlanking = false;
-		bBurst = false;
 		NextDecision = 0.f;
-		CanShootAfter = Now() + Enemy->GetTuning().ReactionTime;
+		NextRepath = 0.f;
 		StopMove();
 		if (Old != EState::Combate)
 		{
-			RupturaAssets::PlaySound3D(this, TEXT("inimigo_alerta"), Enemy->GetActorLocation(), 1.f);
-			BroadcastAlert();
+			// O grito avisa os outros: quanto maior o infectado, mais longe se ouve.
+			RupturaAssets::PlaySound3D(this, TEXT("infectado_grito"), Enemy->GetActorLocation() + FVector(0.f, 0.f, 70.f), 1.f,
+				FMath::FRandRange(0.9f, 1.1f) * (Enemy->IsElite() ? 0.75f : 1.f));
+			BroadcastAlert(Enemy->IsElite() ? 3000.f : 1600.f);
 		}
 		break;
 
 	case EState::Buscando:
-		Enemy->SetMoveSpeed(AlertSpeed);
+		Enemy->SetMoveSpeed(InvestigateSpeed);
 		Enemy->SetCombatStance(false);
-		Enemy->UnCrouch();
 		ClearFocus(EAIFocusPriority::Gameplay);
-		SearchEnd = Now() + 16.f;
+		SearchEnd = Now() + 18.f;
 		StopMove();
 		MoveToPoint(LastKnownLocation, 120.f);
 		bMoveIssued = true;
@@ -377,7 +409,7 @@ void AEnemyAIController::TickPatrol(float DeltaSeconds)
 	const TArray<FVector>& Points = Enemy->GetPatrolPoints();
 	if (Points.Num() == 0)
 	{
-		// Sentinela: fica no posto olhando ao redor.
+		// Parado no lugar, balançando, de vez em quando virando a cabeça para um barulho imaginário.
 		if (FVector::Dist2D(Enemy->GetActorLocation(), HomeLocation) > 150.f && !IsMoving())
 		{
 			ClearFocus(EAIFocusPriority::Gameplay);
@@ -391,7 +423,7 @@ void AEnemyAIController::TickPatrol(float DeltaSeconds)
 	if (bMoveIssued && !IsMoving())
 	{
 		bMoveIssued = false;
-		WaitUntil = Now() + FMath::FRandRange(1.5f, 3.5f);
+		WaitUntil = Now() + FMath::FRandRange(2.f, 6.f);
 	}
 	if (!bMoveIssued && Now() >= WaitUntil)
 	{
@@ -421,9 +453,9 @@ void AEnemyAIController::TickInvestigate(float DeltaSeconds)
 	{
 		return;
 	}
-	// Chegou: olha em volta por alguns segundos.
+	// Chegou: fica farejando em volta por alguns segundos.
 	LookAround(DeltaSeconds);
-	if (StateTime > 9.f)
+	if (StateTime > 10.f)
 	{
 		EnterState(EState::Patrulha);
 	}
@@ -447,11 +479,11 @@ void AEnemyAIController::TickSearch(float DeltaSeconds)
 	}
 
 	// Vasculha pontos aleatórios perto da última posição conhecida.
-	FVector Next = LastKnownLocation + FVector(FMath::FRandRange(-1000.f, 1000.f), FMath::FRandRange(-1000.f, 1000.f), 0.f);
+	FVector Next = LastKnownLocation + FVector(FMath::FRandRange(-900.f, 900.f), FMath::FRandRange(-900.f, 900.f), 0.f);
 	if (UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
 	{
 		FNavLocation Loc;
-		if (Nav->GetRandomReachablePointInRadius(LastKnownLocation, 1100.f, Loc))
+		if (Nav->GetRandomReachablePointInRadius(LastKnownLocation, 1000.f, Loc))
 		{
 			Next = Loc.Location;
 		}
@@ -459,7 +491,7 @@ void AEnemyAIController::TickSearch(float DeltaSeconds)
 	ClearFocus(EAIFocusPriority::Gameplay);
 	Enemy->SetCombatStance(false);
 	MoveToPoint(Next, 100.f);
-	WaitUntil = Now() + FMath::FRandRange(1.5f, 3.f);
+	WaitUntil = Now() + FMath::FRandRange(1.5f, 3.5f);
 }
 
 void AEnemyAIController::LookAround(float DeltaSeconds)
@@ -468,7 +500,7 @@ void AEnemyAIController::LookAround(float DeltaSeconds)
 	{
 		return;
 	}
-	NextLookAround = Now() + FMath::FRandRange(1.2f, 2.5f);
+	NextLookAround = Now() + FMath::FRandRange(2.5f, 6.f);
 	const FVector Dir = FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f).Vector();
 	SetFocalPoint(Enemy->GetActorLocation() + Dir * 600.f, EAIFocusPriority::Gameplay);
 	Enemy->SetCombatStance(true); // gira para o ponto de foco
@@ -486,14 +518,12 @@ void AEnemyAIController::TickCombat(float DeltaSeconds)
 	const float T = Now();
 	const FVector Eye = Enemy->GetEyeLocationStanding();
 	const FVector Aim = PlayerAimPoint();
-	const bool bLOS = FVector::Dist(Eye, Aim) < 5000.f && HasLineOfSight(Eye, Aim);
+	const float Dist = FVector::Dist(Enemy->GetActorLocation(), Player->GetActorLocation());
+	const bool bLOS = Dist < 3500.f && HasLineOfSight(Eye, Aim);
 
-	if (bLOS)
+	// Muito perto, ele sente o cheiro / ouve a respiração mesmo sem ver.
+	if (bLOS || Dist < 500.f)
 	{
-		if (T - LastSeenTime > 1.5f)
-		{
-			CanShootAfter = FMath::Max(CanShootAfter, T + Enemy->GetTuning().ReactionTime * 0.6f);
-		}
 		LastKnownLocation = Player->GetActorLocation();
 		LastSeenTime = T;
 		SetFocus(Player, EAIFocusPriority::Gameplay);
@@ -504,135 +534,56 @@ void AEnemyAIController::TickCombat(float DeltaSeconds)
 		SetFocalPoint(LastKnownLocation + FVector(0.f, 0.f, 40.f), EAIFocusPriority::Gameplay);
 	}
 
-	if (T - LastAlertBroadcast > 3.f)
+	if (T - LastAlertBroadcast > 5.f)
 	{
-		BroadcastAlert();
-	}
-
-	if (AvoidGrenades())
-	{
-		return;
+		BroadcastAlert(1200.f);
 	}
 
 	const float SinceSeen = T - LastSeenTime;
-	if (SinceSeen > 9.f)
+	if (SinceSeen > LoseTrackTime)
 	{
 		EnterState(EState::Buscando);
 		return;
 	}
 
-	// --- Decisões de posicionamento ---
-	if (T >= NextDecision)
+	// Golpeando ou atordoado: fica no lugar.
+	if (Enemy->IsAttacking() || Enemy->IsStaggered())
 	{
-		NextDecision = T + FMath::FRandRange(0.6f, 1.1f);
-		const float Dist = FVector::Dist2D(Enemy->GetActorLocation(), LastKnownLocation);
-
-		if (!IsMoving())
+		if (IsMoving())
 		{
-			if (bHasCover && !IsCoverValid(CoverPoint))
-			{
-				bHasCover = false;
-			}
+			StopMove();
+			bChasing = false;
+		}
+		return;
+	}
 
-			FVector Point;
-			if (SinceSeen > 2.5f && !bFlanking && FMath::FRand() < Enemy->GetTuning().FlankChance && FindFlankPoint(Point))
-			{
-				bFlanking = true;
-				bHasCover = false;
-				MoveToPoint(Point, 80.f);
-			}
-			else if (!bHasCover || Dist > 2600.f)
-			{
-				if (FindCoverPoint(Point))
-				{
-					CoverPoint = Point;
-					bHasCover = true;
-					bFlanking = false;
-					MoveToPoint(Point, 50.f);
-				}
-				else if (Dist > 1600.f || !bLOS)
-				{
-					MoveToPoint(LastKnownLocation, 900.f); // avança
-				}
-			}
-			else if (SinceSeen > 4.5f)
-			{
-				bHasCover = false;
-				MoveToPoint(LastKnownLocation, 500.f); // pressiona a última posição conhecida
-			}
+	// Ao alcance: ataca.
+	if (Dist < Enemy->GetAttackRange() && SinceSeen < 0.3f)
+	{
+		if (Enemy->CanAttack())
+		{
+			StopMove();
+			bChasing = false;
+			Enemy->StartMeleeAttack(Player);
+		}
+		return;
+	}
+
+	// Perseguição: segue o jogador direto enquanto o vê; senão, corre até a última posição conhecida.
+	if (SinceSeen < 0.5f)
+	{
+		if (!bChasing || (!IsMoving() && T >= NextRepath))
+		{
+			ChaseActor(Player, 40.f);
+			NextRepath = T + 0.4f;
 		}
 	}
-
-	// --- Disparo em rajadas ---
-	const bool bAtCover = bHasCover && !IsMoving() && FVector::Dist2D(Enemy->GetActorLocation(), CoverPoint) < 130.f;
-	bool bStand = true;
-
-	if (bLOS && T >= CanShootAfter)
+	else if (bChasing || (!IsMoving() && T >= NextDecision))
 	{
-		if (bBurst)
-		{
-			if (T > BurstEnd)
-			{
-				bBurst = false;
-				PauseEnd = T + FMath::FRandRange(0.7f, 1.6f);
-			}
-			else
-			{
-				const float PlayerSpeed = Player->GetVelocity().Size2D();
-				const float Extra = (IsMoving() ? 2.f : 0.f) + (PlayerSpeed > 500.f ? 1.5f : 0.f);
-				Enemy->FireAt(Aim, Extra);
-			}
-		}
-		else if (T >= PauseEnd)
-		{
-			bBurst = true;
-			BurstEnd = T + Enemy->GetTuning().BurstTime * FMath::FRandRange(0.7f, 1.3f);
-		}
+		bChasing = false;
+		NextDecision = T + 0.8f;
+		MoveToPoint(LastKnownLocation, 90.f);
 	}
-	else
-	{
-		bBurst = false;
-	}
-
-	if (bAtCover && !bBurst)
-	{
-		bStand = false; // abaixa atrás da cobertura entre as rajadas
-	}
-	if (bStand && Enemy->bIsCrouched)
-	{
-		Enemy->UnCrouch();
-	}
-	else if (!bStand && !Enemy->bIsCrouched)
-	{
-		Enemy->Crouch();
-	}
-}
-
-bool AEnemyAIController::AvoidGrenades()
-{
-	TArray<AGrenade*> Grenades;
-	AGrenade::GetActiveGrenades(Grenades);
-	for (AGrenade* G : Grenades)
-	{
-		if (!G || G->IsRocket() || G->GetInstigator() == Enemy)
-		{
-			continue;
-		}
-		const FVector Delta = Enemy->GetActorLocation() - G->GetActorLocation();
-		if (Delta.Size() < 480.f && G->GetTimeLeft() > 0.3f)
-		{
-			const FVector Away = Enemy->GetActorLocation() + Delta.GetSafeNormal2D() * 700.f;
-			if (Enemy->bIsCrouched)
-			{
-				Enemy->UnCrouch();
-			}
-			MoveToPoint(Away, 80.f);
-			bHasCover = false;
-			NextDecision = Now() + 1.2f;
-			return true;
-		}
-	}
-	return false;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -642,6 +593,7 @@ bool AEnemyAIController::AvoidGrenades()
 void AEnemyAIController::MoveToPoint(const FVector& Destination, float Acceptance)
 {
 	bDirectMove = false;
+	DirectFollow.Reset();
 	StuckTime = 0.f;
 	MoveTarget = Destination;
 	MoveAcceptance = Acceptance;
@@ -654,6 +606,27 @@ void AEnemyAIController::MoveToPoint(const FVector& Destination, float Acceptanc
 	}
 }
 
+void AEnemyAIController::ChaseActor(AActor* Target, float Acceptance)
+{
+	if (!Target)
+	{
+		return;
+	}
+	bChasing = true;
+	bDirectMove = false;
+	DirectFollow.Reset();
+	StuckTime = 0.f;
+	MoveTarget = Target->GetActorLocation();
+	MoveAcceptance = Acceptance;
+
+	const EPathFollowingRequestResult::Type Result = MoveToActor(Target, Acceptance, true, true, true, nullptr, true);
+	if (Result == EPathFollowingRequestResult::Failed)
+	{
+		bDirectMove = true;
+		DirectFollow = Target;
+	}
+}
+
 bool AEnemyAIController::IsMoving() const
 {
 	return bDirectMove || GetMoveStatus() == EPathFollowingStatus::Moving;
@@ -662,6 +635,7 @@ bool AEnemyAIController::IsMoving() const
 void AEnemyAIController::StopMove()
 {
 	bDirectMove = false;
+	DirectFollow.Reset();
 	StopMovement();
 }
 
@@ -671,17 +645,28 @@ void AEnemyAIController::UpdateDirectMove(float DeltaSeconds)
 	{
 		return;
 	}
+	if (const AActor* Follow = DirectFollow.Get())
+	{
+		MoveTarget = Follow->GetActorLocation();
+	}
 	FVector ToTarget = MoveTarget - Enemy->GetActorLocation();
 	ToTarget.Z = 0.f;
 	if (ToTarget.Size() <= MoveAcceptance)
 	{
-		bDirectMove = false;
+		if (!DirectFollow.IsValid())
+		{
+			bDirectMove = false;
+		}
 		return;
 	}
 
 	FVector Dir = ToTarget.GetSafeNormal();
 	FHitResult Hit;
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemySteer), false, Enemy);
+	if (const AActor* Follow = DirectFollow.Get())
+	{
+		Query.AddIgnoredActor(Follow);
+	}
 	const FVector Start = Enemy->GetActorLocation() - FVector(0.f, 0.f, 40.f);
 	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, Start + Dir * 160.f, ECC_Visibility, Query))
 	{
@@ -697,7 +682,7 @@ void AEnemyAIController::UpdateDirectMove(float DeltaSeconds)
 
 void AEnemyAIController::UpdateStuck(float DeltaSeconds)
 {
-	if (!IsMoving())
+	if (!IsMoving() || Enemy->IsAttacking())
 	{
 		StuckTime = 0.f;
 		return;
@@ -705,11 +690,11 @@ void AEnemyAIController::UpdateStuck(float DeltaSeconds)
 	if (Enemy->GetVelocity().Size2D() < 25.f)
 	{
 		StuckTime += DeltaSeconds;
-		if (StuckTime > 1.8f)
+		if (StuckTime > 2.f)
 		{
 			StopMove(); // desiste deste destino; a próxima decisão escolhe outro
+			bChasing = false;
 			StuckTime = 0.f;
-			bHasCover = false;
 		}
 	}
 	else
@@ -718,150 +703,10 @@ void AEnemyAIController::UpdateStuck(float DeltaSeconds)
 	}
 }
 
-// ---------------------------------------------------------------------------------------------
-// Táticas
-// ---------------------------------------------------------------------------------------------
-
 bool AEnemyAIController::HasLineOfSight(const FVector& From, const FVector& To) const
 {
 	FHitResult Hit;
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemyLOS), false, Enemy);
 	Query.AddIgnoredActor(GetPlayer());
 	return !GetWorld()->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Query);
-}
-
-bool AEnemyAIController::ProjectToFloor(const FVector& Point, FVector& OutFloor) const
-{
-	if (UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
-	{
-		FNavLocation Loc;
-		if (Nav->ProjectPointToNavigation(Point, Loc, FVector(120.f, 120.f, 400.f)))
-		{
-			OutFloor = Loc.Location;
-			return true;
-		}
-	}
-	// Sem navmesh: traço para baixo para achar o chão.
-	FHitResult Hit;
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemyFloor), false, Enemy);
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Point + FVector(0.f, 0.f, 150.f), Point - FVector(0.f, 0.f, 400.f), ECC_Visibility, Query))
-	{
-		OutFloor = Hit.ImpactPoint;
-		return true;
-	}
-	return false;
-}
-
-bool AEnemyAIController::IsSpotFree(const FVector& FloorPoint) const
-{
-	const float Radius = Enemy->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	const float Half = Enemy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemySpot), false, Enemy);
-	return !GetWorld()->OverlapBlockingTestByChannel(FloorPoint + FVector(0.f, 0.f, Half + 5.f), FQuat::Identity, ECC_Pawn,
-		FCollisionShape::MakeCapsule(Radius, Half), Query);
-}
-
-bool AEnemyAIController::IsCoverValid(const FVector& FloorPoint) const
-{
-	const FVector ThreatEye = LastKnownLocation + FVector(0.f, 0.f, 60.f);
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemyCover), false, Enemy);
-	Query.AddIgnoredActor(GetPlayer());
-
-	// Agachado (60 cm) precisa estar protegido por algo próximo...
-	const FVector Low = FloorPoint + FVector(0.f, 0.f, 60.f);
-	FHitResult LowHit;
-	if (!GetWorld()->LineTraceSingleByChannel(LowHit, Low, ThreatEye, ECC_Visibility, Query) || LowHit.Distance > 220.f)
-	{
-		return false;
-	}
-	// ...e em pé (165 cm) deve conseguir atirar por cima.
-	const FVector High = FloorPoint + FVector(0.f, 0.f, 165.f);
-	FHitResult HighHit;
-	return !GetWorld()->LineTraceSingleByChannel(HighHit, High, ThreatEye, ECC_Visibility, Query);
-}
-
-bool AEnemyAIController::FindCoverPoint(FVector& OutPoint) const
-{
-	const FVector Self = Enemy->GetActorLocation();
-	float BestScore = TNumericLimits<float>::Max();
-	bool bFound = false;
-
-	for (int32 i = 0; i < 24; ++i)
-	{
-		const float Angle = i * 15.f + FMath::FRandRange(-6.f, 6.f);
-		const float Radius = FMath::FRandRange(250.f, 1100.f);
-		const FVector Candidate = Self + FRotator(0.f, Angle, 0.f).Vector() * Radius;
-
-		FVector Floor;
-		if (!ProjectToFloor(Candidate, Floor))
-		{
-			continue;
-		}
-		const float ToThreat = FVector::Dist2D(Floor, LastKnownLocation);
-		if (ToThreat < 500.f || ToThreat > 2300.f)
-		{
-			continue;
-		}
-		if (!IsCoverValid(Floor) || !IsSpotFree(Floor))
-		{
-			continue;
-		}
-		// Evita amontoar inimigos no mesmo ponto.
-		bool bTaken = false;
-		for (TActorIterator<AEnemyCharacter> It(GetWorld()); It; ++It)
-		{
-			if (*It != Enemy && !It->IsDead() && FVector::Dist2D(It->GetActorLocation(), Floor) < 150.f)
-			{
-				bTaken = true;
-				break;
-			}
-		}
-		if (bTaken)
-		{
-			continue;
-		}
-		const float Score = FVector::Dist(Self, Floor) + FMath::Abs(ToThreat - 1200.f) * 0.5f;
-		if (Score < BestScore)
-		{
-			BestScore = Score;
-			OutPoint = Floor;
-			bFound = true;
-		}
-	}
-	return bFound;
-}
-
-bool AEnemyAIController::FindFlankPoint(FVector& OutPoint) const
-{
-	const FVector Self = Enemy->GetActorLocation();
-	const FVector FromThreat = (Self - LastKnownLocation).GetSafeNormal2D();
-	const FVector ThreatEye = LastKnownLocation + FVector(0.f, 0.f, 60.f);
-	float BestDist = TNumericLimits<float>::Max();
-	bool bFound = false;
-
-	for (int32 i = 0; i < 12; ++i)
-	{
-		const float Side = (i % 2 == 0) ? 1.f : -1.f;
-		const float Angle = Side * FMath::FRandRange(65.f, 110.f);
-		const FVector Dir = FromThreat.RotateAngleAxis(Angle, FVector::UpVector);
-		const FVector Candidate = LastKnownLocation + Dir * FMath::FRandRange(800.f, 1300.f);
-
-		FVector Floor;
-		if (!ProjectToFloor(Candidate, Floor) || !IsSpotFree(Floor))
-		{
-			continue;
-		}
-		if (!HasLineOfSight(Floor + FVector(0.f, 0.f, 160.f), ThreatEye))
-		{
-			continue;
-		}
-		const float D = FVector::Dist(Self, Floor);
-		if (D < BestDist)
-		{
-			BestDist = D;
-			OutPoint = Floor;
-			bFound = true;
-		}
-	}
-	return bFound;
 }

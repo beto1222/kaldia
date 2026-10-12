@@ -10,7 +10,12 @@ struct FWeaponDef
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") FText DisplayName;
+	/** Dano por projétil (por chumbo, na espingarda). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") float Damage = 20.f;
+	/** Projéteis por disparo (1 = bala; > 1 = chumbos espalhados pelo cone de dispersão). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") int32 Pellets = 1;
+	/** Abertura do cone de chumbos (graus), somada à dispersão normal. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") float PelletSpreadDeg = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") float FireInterval = 0.2f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") int32 MagSize = 12;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") int32 MaxReserve = 60;
@@ -26,7 +31,6 @@ struct FWeaponDef
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") float GunLength = 60.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") FName FireSound;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") float Loudness = 1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Arma") FLinearColor TracerColor = FLinearColor(1.f, 0.75f, 0.35f);
 };
 
 USTRUCT(BlueprintType)
@@ -48,7 +52,7 @@ struct FShotResult
 	TWeakObjectPtr<AActor> HitActor;
 };
 
-/** Armas de disparo instantâneo (hitscan) com munição, recarga, dispersão e efeitos. Usado por Kael e inimigos. */
+/** Armas de disparo instantâneo (hitscan) de Kael: munição escassa, recarga, dispersão, chumbos e efeitos. */
 UCLASS(ClassGroup = (Ruptura), meta = (BlueprintSpawnableComponent))
 class RUPTURA_API UWeaponComponent : public UActorComponent
 {
@@ -60,8 +64,6 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	void InitPlayerLoadout();
-	void InitEnemyLoadout(float Damage, float FireInterval);
-	void InitBossLoadout(float Damage, float FireInterval);
 
 	/**
 	 * Dispara uma vez. AimStart/AimDir definem para onde se mira (câmera ou olhos);
@@ -86,7 +88,7 @@ public:
 	const FWeaponDef& GetDefAt(int32 Index) const;
 	const FWeaponAmmo& GetAmmoAt(int32 Index) const;
 
-	/** Inimigos têm munição de reserva infinita (ainda precisam recarregar). */
+	/** Munição de reserva infinita (útil para testes). */
 	UPROPERTY(EditAnywhere, Category = "Arma")
 	bool bInfiniteReserve = false;
 
@@ -107,5 +109,7 @@ protected:
 
 	float Now() const;
 	void FinishReload();
+	/** Um projétil: traço da mira e traço real saindo do cano. Acumula o resultado em OutResult. */
+	void FireProjectile(const FWeaponDef& Def, const FVector& AimStart, const FVector& Dir, const FVector& Muzzle, FShotResult& OutResult, bool bEffects);
 	static bool AreAllies(const AActor* A, const AActor* B);
 };

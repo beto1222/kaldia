@@ -108,6 +108,16 @@ void AGrenade::Launch(const FVector& Velocity, bool bInRocket)
 	Movement->UpdateComponentVelocity();
 }
 
+void AGrenade::MakeAcid()
+{
+	bAcid = true;
+	Mesh->SetRelativeScale3D(FVector(0.28f, 0.22f, 0.22f));
+	Mesh->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.3f, 0.45f, 0.03f), 0.15f, 0.f, 2.5f));
+	Blink->SetLightColor(FLinearColor(0.5f, 0.9f, 0.1f));
+	Blink->SetIntensity(400.f);
+	Blink->SetAttenuationRadius(350.f);
+}
+
 float AGrenade::GetTimeLeft() const
 {
 	return FMath::Max(0.f, FuseTime - Age);
@@ -145,8 +155,15 @@ void AGrenade::Tick(float DeltaSeconds)
 		TrailTimer -= DeltaSeconds;
 		if (TrailTimer <= 0.f)
 		{
-			TrailTimer = 0.04f;
-			RupturaFx::Smoke(GetWorld(), GetActorLocation(), 45.f, 0.8f);
+			TrailTimer = bAcid ? 0.07f : 0.04f;
+			if (bAcid)
+			{
+				RupturaFx::Blood(GetWorld(), GetActorLocation(), FVector::DownVector, 1);
+			}
+			else
+			{
+				RupturaFx::Smoke(GetWorld(), GetActorLocation(), 45.f, 0.8f);
+			}
 		}
 	}
 	else
@@ -180,6 +197,18 @@ void AGrenade::Explode()
 	Ignore.Add(this);
 	UGameplayStatics::ApplyRadialDamageWithFalloff(World, BaseDamage, MinDamage, Origin, InnerRadius, OuterRadius, 1.f,
 		UDamageType::StaticClass(), Ignore, this, InstigatorController, ECC_Visibility);
+
+	if (bAcid)
+	{
+		RupturaFx::AcidSplash(World, Origin, OuterRadius * 0.5f);
+		RupturaAssets::PlaySound3D(this, TEXT("acido"), Origin, 1.f, FMath::FRandRange(0.9f, 1.1f));
+		if (AKaelCharacter* Kael = Cast<AKaelCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+		{
+			Kael->AddTrauma(FMath::Clamp(0.5f - FVector::Dist(Kael->GetActorLocation(), Origin) / 2000.f, 0.f, 0.5f));
+		}
+		Destroy();
+		return;
+	}
 
 	// Empurrão físico nos personagens e tremor na câmera do jogador.
 	for (TActorIterator<ACharacter> It(World); It; ++It)

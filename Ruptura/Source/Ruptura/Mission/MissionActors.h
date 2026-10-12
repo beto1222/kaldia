@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Mission/InteractableActor.h"
+#include "Core/InfectedBody.h"
 #include "MissionActors.generated.h"
 
 class UStaticMeshComponent;
@@ -10,7 +11,7 @@ class UBoxComponent;
 class UHealthComponent;
 class UMaterialInstanceDynamic;
 
-/** Cartão de acesso sobre a mesa do posto da guarda. */
+/** Crachá de acesso largado sobre a mesa do posto da guarda. */
 UCLASS()
 class RUPTURA_API AKeycardPickup : public AInteractableActor
 {
@@ -30,7 +31,7 @@ protected:
 	float Age = 0.f;
 };
 
-/** Terminal que desativa o sistema de segurança (segurar E). */
+/** Terminal da sala de controle: restaura a energia de emergência e destrava a porta do reator (segurar E). */
 UCLASS()
 class RUPTURA_API ASecurityTerminal : public AInteractableActor
 {
@@ -58,7 +59,7 @@ protected:
 	float BlinkTime = 0.f;
 };
 
-/** Núcleo de energia do reator. Protegido por escudo até o robô ser destruído. */
+/** Núcleo do Protocolo Zero. Envolvido por uma membrana de carne até o Hospedeiro morrer. */
 UCLASS()
 class RUPTURA_API APowerCore : public AActor
 {
@@ -113,4 +114,32 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Zona") TObjectPtr<UBoxComponent> Box;
 	FName ZoneId;
+};
+
+/**
+ * Aparição: um vulto parado, encarando o jogador de longe. Some quando ele se aproxima,
+ * quando a lanterna o ilumina ou depois de alguns segundos — deixando a dúvida se estava mesmo lá.
+ */
+UCLASS()
+class RUPTURA_API AApparition : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	AApparition();
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	UPROPERTY(EditAnywhere, Category = "Aparicao") float VanishDistance = 1500.f;
+	UPROPERTY(EditAnywhere, Category = "Aparicao") float MaxLife = 14.f;
+
+protected:
+	void Vanish();
+
+	UPROPERTY(VisibleAnywhere, Category = "Aparicao") TObjectPtr<USceneComponent> BodyRoot;
+	UPROPERTY() FInfectedBody Body;
+
+	float Age = 0.f;
+	float LitTime = 0.f;
+	bool bVanished = false;
 };

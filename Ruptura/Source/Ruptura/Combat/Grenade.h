@@ -9,7 +9,7 @@ class UStaticMeshComponent;
 class UProjectileMovementComponent;
 class UPointLightComponent;
 
-/** Granada de mão (quica, explode no tempo) e também foguete do robô (explode no impacto). */
+/** Granada de mão (quica, explode no tempo) e também a bile ácida cuspida pelo Hospedeiro (explode no impacto). */
 UCLASS()
 class RUPTURA_API AGrenade : public AActor
 {
@@ -22,6 +22,8 @@ public:
 
 	/** Configura e lança. bRocket = explode ao tocar em algo, inclusive personagens. */
 	void Launch(const FVector& Velocity, bool bInRocket);
+	/** Transforma o projétil em bile ácida (visual, som e respingo próprios, sem empurrão). Chamar depois de Launch. */
+	void MakeAcid();
 
 	float GetTimeLeft() const;
 	bool IsRocket() const { return bRocket; }
@@ -53,6 +55,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Granada") TObjectPtr<UPointLightComponent> Blink;
 
 	bool bRocket = false;
+	bool bAcid = false;
 	bool bExploded = false;
 	float Age = 0.f;
 	float TrailTimer = 0.f;

@@ -11,7 +11,7 @@
  *  X  8100 .. 10100  Rampa descendo até o subsolo (Z 0 -> -800)
  *  X 10100 .. 13000  Ala de segurança subterrânea (sala do terminal ao norte)
  *  X 13000           Porta blindada (aberta pelo terminal)
- *  X 13000 .. 17000  Salão do reator: robô COLOSSO e núcleo de energia
+ *  X 13000 .. 17000  Salão do reator: o HOSPEDEIRO e o núcleo do Protocolo Zero
  */
 namespace RupturaLayout
 {
@@ -32,7 +32,7 @@ namespace RupturaLayout
 	constexpr float ReactorHalfWidth = 2000.f;
 	constexpr float ReactorCeilingZ = 200.f;
 
-	inline FVector KeycardLocation() { return FVector(7100.f, 1950.f, 98.f); }
+	inline FVector KeycardLocation() { return FVector(7100.f, 1950.f, 92.f); }
 	inline FVector TerminalLocation() { return FVector(12300.f, 2480.f, SubFloorZ); }
 	inline FVector CoreLocation() { return FVector(15900.f, 0.f, SubFloorZ + 30.f); }
 	inline FVector BossSpawn() { return FVector(15000.f, 0.f, SubFloorZ + 200.f); }

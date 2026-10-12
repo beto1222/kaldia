@@ -48,8 +48,9 @@ AKeycardPickup::AKeycardPickup()
 {
 	Card = MakeVisual(this, RootComponent, TEXT("Card"));
 	Card->SetRelativeScale3D(FVector(0.09f, 0.055f, 0.008f));
-	Glow = MakeLight(this, RootComponent, TEXT("Glow"), FLinearColor(0.2f, 0.9f, 1.f), 120.f, 300.f);
-	Glow->SetRelativeLocation(FVector(0.f, 0.f, 20.f));
+	Card->SetRelativeRotation(FRotator(0.f, 23.f, 0.f));
+	Glow = MakeLight(this, RootComponent, TEXT("Glow"), FLinearColor(0.85f, 0.9f, 1.f), 14.f, 180.f);
+	Glow->SetRelativeLocation(FVector(0.f, 0.f, 25.f));
 	InteractRadius = 220.f;
 }
 
@@ -57,7 +58,9 @@ void AKeycardPickup::BeginPlay()
 {
 	Super::BeginPlay();
 	Card->SetStaticMesh(RupturaAssets::Mesh(EShape::Cube));
-	Card->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.15f, 0.85f, 1.f), 0.2f, 0.3f, 6.f));
+	// Crachá branco manchado de sangue.
+	Card->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.5f, 0.48f, 0.45f), 0.3f, 0.1f, 0.f));
+	RupturaAssets::AddPart(this, Card, EShape::Cube, FVector(20.f, 15.f, 60.f), FVector(55.f, 50.f, 20.f), RupturaAssets::MakeMaterial(this, FLinearColor(0.09f, 0.004f, 0.003f), 0.2f, 0.f, 0.f));
 	BaseLocation = GetActorLocation();
 }
 
@@ -65,14 +68,12 @@ void AKeycardPickup::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Age += DeltaSeconds;
-	SetActorLocation(BaseLocation + FVector(0.f, 0.f, 4.f + FMath::Sin(Age * 2.5f) * 3.f));
-	AddActorWorldRotation(FRotator(0.f, 70.f * DeltaSeconds, 0.f));
-	Glow->SetIntensity(100.f + 60.f * FMath::Sin(Age * 4.f));
+	Glow->SetIntensity(12.f + 6.f * FMath::Max(0.f, FMath::PerlinNoise1D(Age * 1.5f)));
 }
 
 FText AKeycardPickup::GetInteractPrompt(const AKaelCharacter* Kael) const
 {
-	return FText::FromString(TEXT("Pegar cartão de acesso"));
+	return FText::FromString(TEXT("Pegar o crachá de acesso"));
 }
 
 void AKeycardPickup::Interact(AKaelCharacter* Kael)
@@ -118,7 +119,7 @@ void ASecurityTerminal::BeginPlay()
 	Super::BeginPlay();
 	Console->SetStaticMesh(RupturaAssets::Mesh(EShape::Cube));
 	Console->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.06f, 0.065f, 0.07f), 0.4f, 0.8f, 0.f));
-	ScreenMaterial = RupturaAssets::MakeMaterial(this, FLinearColor(1.f, 0.1f, 0.05f), 0.1f, 0.f, 10.f);
+	ScreenMaterial = RupturaAssets::MakeMaterial(this, FLinearColor(1.f, 0.1f, 0.05f), 0.1f, 0.f, 4.f);
 	Screen->SetStaticMesh(RupturaAssets::Mesh(EShape::Cube));
 	Screen->SetMaterial(0, ScreenMaterial);
 	if (bHacked)
@@ -133,13 +134,13 @@ void ASecurityTerminal::Tick(float DeltaSeconds)
 	BlinkTime += DeltaSeconds;
 	if (!bHacked)
 	{
-		ScreenLight->SetIntensity(FMath::Frac(BlinkTime * 1.5f) < 0.5f ? 300.f : 120.f);
+		ScreenLight->SetIntensity(FMath::Frac(BlinkTime * 1.5f) < 0.5f ? 180.f : 60.f);
 	}
 }
 
 FText ASecurityTerminal::GetInteractPrompt(const AKaelCharacter* Kael) const
 {
-	return bHacked ? FText::GetEmpty() : FText::FromString(TEXT("Segure para desativar o sistema de segurança"));
+	return bHacked ? FText::GetEmpty() : FText::FromString(TEXT("Segure para religar a energia de emergência"));
 }
 
 FVector ASecurityTerminal::GetInteractLocation() const
@@ -197,7 +198,7 @@ APowerCore::APowerCore()
 	Core->SetRelativeLocation(FVector(0.f, 0.f, 230.f));
 	Core->SetRelativeScale3D(FVector(2.6f, 2.6f, 4.2f));
 
-	Light = MakeLight(this, Root, TEXT("Light"), FLinearColor(0.2f, 0.85f, 1.f), 6000.f, 3500.f);
+	Light = MakeLight(this, Root, TEXT("Light"), FLinearColor(1.f, 0.12f, 0.06f), 3500.f, 3500.f);
 	Light->SetRelativeLocation(FVector(0.f, 0.f, 300.f));
 	Light->SetCastShadows(true);
 
@@ -210,10 +211,11 @@ void APowerCore::BeginPlay()
 	Super::BeginPlay();
 
 	Core->SetStaticMesh(RupturaAssets::Mesh(EShape::Cylinder));
-	Core->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.2f, 0.85f, 1.f), 0.1f, 0.f, 14.f));
+	// Cilindro de contenção com algo vermelho e vivo pulsando dentro; os pilares viraram tentáculos.
+	Core->SetMaterial(0, RupturaAssets::MakeMaterial(this, FLinearColor(0.6f, 0.04f, 0.03f), 0.15f, 0.f, 5.f));
 
-	UMaterialInterface* RingMat = RupturaAssets::MakeMaterial(this, FLinearColor(0.08f, 0.09f, 0.1f), 0.3f, 0.95f, 0.f);
-	UMaterialInterface* PylonMat = RupturaAssets::MakeMaterial(this, FLinearColor(0.25f, 0.5f, 1.f), 0.2f, 0.f, 10.f);
+	UMaterialInterface* RingMat = RupturaAssets::MakeMaterial(this, FLinearColor(0.06f, 0.06f, 0.065f), 0.45f, 0.95f, 0.f);
+	UMaterialInterface* PylonMat = RupturaAssets::MakeMaterial(this, FLinearColor(0.3f, 0.06f, 0.05f), 0.25f, 0.f, 0.f);
 
 	for (int32 i = 0; i < 3; ++i)
 	{
@@ -243,8 +245,8 @@ void APowerCore::SetShield(bool bOn)
 		}
 	}
 	UMaterialInterface* PylonMat = bOn
-		? RupturaAssets::MakeMaterial(this, FLinearColor(0.25f, 0.5f, 1.f), 0.2f, 0.f, 10.f)
-		: RupturaAssets::MakeMaterial(this, FLinearColor(0.05f, 0.05f, 0.06f), 0.5f, 0.6f, 0.f);
+		? RupturaAssets::MakeMaterial(this, FLinearColor(0.3f, 0.06f, 0.05f), 0.25f, 0.f, 0.f)
+		: RupturaAssets::MakeMaterial(this, FLinearColor(0.06f, 0.02f, 0.02f), 0.8f, 0.f, 0.f);
 	for (UStaticMeshComponent* P : Pylons)
 	{
 		if (P)
@@ -254,7 +256,8 @@ void APowerCore::SetShield(bool bOn)
 	}
 	if (!bOn && HasActorBegunPlay())
 	{
-		RupturaAssets::PlaySound3D(this, TEXT("escudo_off"), GetActorLocation() + FVector(0.f, 0.f, 200.f), 1.f);
+		RupturaAssets::PlaySound3D(this, TEXT("membrana_rompe"), GetActorLocation() + FVector(0.f, 0.f, 200.f), 1.f);
+		RupturaFx::Blood(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 250.f), FVector::UpVector, 25);
 	}
 }
 
@@ -271,13 +274,13 @@ float APowerCore::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 		{
 			Where = static_cast<const FPointDamageEvent&>(DamageEvent).HitInfo.ImpactPoint;
 		}
-		RupturaFx::Sparks(GetWorld(), Where, FLinearColor(0.3f, 0.6f, 1.f), 3, 400.f);
+		RupturaFx::Blood(GetWorld(), Where, FVector::UpVector, 3);
 		if (GetWorld()->GetTimeSeconds() - LastShieldHint > 4.f)
 		{
 			LastShieldHint = GetWorld()->GetTimeSeconds();
 			if (AMissionDirector* Director = AMissionDirector::Get(this))
 			{
-				Director->ShowHint(FText::FromString(TEXT("Escudo do núcleo ativo — derrote o COLOSSO primeiro")));
+				Director->ShowHint(FText::FromString(TEXT("A membrana se regenera. Enquanto o Hospedeiro viver, o núcleo está protegido.")));
 			}
 		}
 		return 0.f;
@@ -333,7 +336,8 @@ void APowerCore::Tick(float DeltaSeconds)
 				Rings[i]->SetRelativeRotation(FRotator(Wobble, Age * (40.f + i * 25.f), -Wobble));
 			}
 		}
-		Light->SetIntensity(6000.f * (0.85f + 0.15f * FMath::Sin(Age * 6.f)));
+		// Pulsa como um coração.
+		Light->SetIntensity(3500.f * (0.55f + 0.45f * FMath::Pow(FMath::Max(0.f, FMath::Sin(Age * 2.6f)), 4.f)));
 		return;
 	}
 
@@ -403,4 +407,83 @@ void AObjectiveZone::OnOverlap(UPrimitiveComponent* OverlappedComp, AActor* Othe
 			Director->OnZoneEntered(ZoneId);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Aparição
+// ---------------------------------------------------------------------------------------------
+
+AApparition::AApparition()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	SetCanBeDamaged(false);
+
+	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	Root->SetMobility(EComponentMobility::Movable);
+	RootComponent = Root;
+
+	BodyRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BodyRoot"));
+	BodyRoot->SetupAttachment(Root);
+}
+
+void AApparition::BeginPlay()
+{
+	Super::BeginPlay();
+	FRandomStream Rng(FMath::Rand());
+	FInfectedLook Look = InfectedBody::RandomLook(Rng, false);
+	Look.Skin = FLinearColor(0.2f, 0.19f, 0.18f);
+	Look.Shirt = FLinearColor(0.03f, 0.03f, 0.03f);
+	Look.EyeShine = 3.f;
+	InfectedBody::Build(this, BodyRoot, Look, 1.08f, Body);
+}
+
+void AApparition::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (bVanished)
+	{
+		return;
+	}
+	Age += DeltaSeconds;
+
+	AKaelCharacter* Kael = Cast<AKaelCharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+	if (!Kael)
+	{
+		return;
+	}
+
+	// Encara o jogador, imóvel, com a cabeça tombada.
+	const FVector ToPlayer = Kael->GetActorLocation() - GetActorLocation();
+	SetActorRotation(FMath::RInterpTo(GetActorRotation(), FRotator(0.f, ToPlayer.Rotation().Yaw, 0.f), DeltaSeconds, 1.5f));
+	InfectedBody::Animate(Body, FInfectedPose(), DeltaSeconds);
+
+	// Iluminado pela lanterna: dá tempo de ver... e some.
+	const FVector ToMe = GetActorLocation() + FVector(0.f, 0.f, 120.f) - Kael->GetFlashlightLocation();
+	const bool bLit = Kael->IsFlashlightOn() && ToMe.Size() < 3500.f && FVector::DotProduct(Kael->GetFlashlightDirection(), ToMe.GetSafeNormal()) > 0.94f;
+	LitTime = bLit ? LitTime + DeltaSeconds : 0.f;
+
+	if (ToPlayer.Size() < VanishDistance || LitTime > 0.35f || Age > MaxLife)
+	{
+		Vanish();
+	}
+}
+
+void AApparition::Vanish()
+{
+	bVanished = true;
+	const FVector Where = GetActorLocation() + FVector(0.f, 0.f, 100.f);
+	RupturaAssets::PlaySound2D(this, TEXT("susto"), 0.8f);
+	RupturaAssets::PlaySound3D(this, TEXT("sussurro"), Where, 1.f);
+	RupturaFx::Smoke(GetWorld(), Where, 140.f, 1.5f);
+	if (AKaelCharacter* Kael = Cast<AKaelCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		Kael->AddFear(0.5f);
+		Kael->AddTrauma(0.15f);
+		Kael->SetFlashlightInterference(1.f);
+	}
+	if (AMissionDirector* Director = AMissionDirector::Get(this))
+	{
+		Director->OnApparitionVanished(GetActorLocation());
+	}
+	Destroy();
 }

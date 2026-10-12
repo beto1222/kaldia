@@ -5,12 +5,16 @@
 #include "Combat/Grenade.h"
 #include "Mission/InteractableActor.h"
 #include "AI/EnemyCharacter.h"
+#include "Core/FxActor.h"
 #include "Core/RupturaAssets.h"
 #include "Core/RupturaGameInstance.h"
 #include "Camera/CameraComponent.h"
+#include "Components/AudioComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Components/CapsuleComponent.h"
+#include "GameFramework/DamageType.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -19,6 +23,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AISense_Sight.h"
 #include "Perception/AISense_Hearing.h"
@@ -35,29 +40,45 @@ AKaelCharacter::AKaelCharacter()
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	Move->bOrientRotationToMovement = true;
-	Move->RotationRate = FRotator(0.f, 720.f, 0.f);
-	Move->JumpZVelocity = 520.f;
-	Move->AirControl = 0.3f;
-	Move->MaxWalkSpeed = JogSpeed;
-	Move->MaxWalkSpeedCrouched = 210.f;
-	Move->BrakingDecelerationWalking = 2000.f;
+	Move->RotationRate = FRotator(0.f, 540.f, 0.f);
+	Move->JumpZVelocity = 420.f;
+	Move->AirControl = 0.2f;
+	Move->MaxWalkSpeed = WalkSpeed;
+	Move->MaxWalkSpeedCrouched = 170.f;
+	Move->BrakingDecelerationWalking = 1600.f;
 	Move->GetNavAgentPropertiesRef().bCanCrouch = true;
 	Move->SetCrouchedHalfHeight(60.f);
 
+	// Câmera sobre o ombro bem fechada: o cenário ocupa a tela e o que está atrás de você fica fora de vista.
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 290.f;
-	CameraBoom->SocketOffset = FVector(0.f, 70.f, 55.f);
+	CameraBoom->TargetArmLength = 165.f;
+	CameraBoom->SocketOffset = FVector(0.f, 58.f, 42.f);
 	CameraBoom->bUsePawnControlRotation = true;
-	CameraBoom->bDoCollisionTest = true; // colisão da câmera com o cenário
-	CameraBoom->ProbeSize = 14.f;
+	CameraBoom->bDoCollisionTest = true;
+	CameraBoom->ProbeSize = 12.f;
 	CameraBoom->bEnableCameraLag = true;
-	CameraBoom->CameraLagSpeed = 18.f;
+	CameraBoom->CameraLagSpeed = 14.f;
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
-	FollowCamera->SetFieldOfView(90.f);
+	FollowCamera->SetFieldOfView(74.f);
+	FollowCamera->PostProcessBlendWeight = 1.f;
+
+	// Lanterna: o feixe aparece na neblina volumétrica e projeta sombras que se mexem com você.
+	Flashlight = CreateDefaultSubobject<USpotLightComponent>(TEXT("Flashlight"));
+	Flashlight->SetupAttachment(RootComponent);
+	Flashlight->SetAbsolute(true, true, false);
+	Flashlight->SetMobility(EComponentMobility::Movable);
+	Flashlight->SetIntensityUnits(ELightUnits::Candelas);
+	Flashlight->SetIntensity(FlashlightCandelas);
+	Flashlight->SetLightColor(FLinearColor(1.f, 0.93f, 0.82f));
+	Flashlight->InnerConeAngle = 11.f;
+	Flashlight->OuterConeAngle = 27.f;
+	Flashlight->SetAttenuationRadius(3200.f);
+	Flashlight->SetCastShadows(true);
+	Flashlight->VolumetricScatteringIntensity = 1.3f;
 
 	BodyRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BodyRoot"));
 	BodyRoot->SetupAttachment(RootComponent);
@@ -77,11 +98,12 @@ void AKaelCharacter::BeginPlay()
 
 	Weapon->InitPlayerLoadout();
 
+	// Roupas civis/táticas foscas, óculos escuros sem brilho.
 	FSoldierColors Colors;
-	Colors.Armor = FLinearColor(0.07f, 0.09f, 0.06f);
-	Colors.Suit = FLinearColor(0.1f, 0.1f, 0.11f);
-	Colors.Visor = FLinearColor(0.1f, 0.85f, 1.f);
-	Colors.VisorGlow = 10.f;
+	Colors.Armor = FLinearColor(0.05f, 0.055f, 0.05f);
+	Colors.Suit = FLinearColor(0.075f, 0.07f, 0.068f);
+	Colors.Visor = FLinearColor(0.02f, 0.02f, 0.024f);
+	Colors.VisorGlow = 0.f;
 	SoldierBody::Build(this, BodyRoot, Colors, 1.f, Body);
 	SoldierBody::SetGunLength(Body, Weapon->GetDef().GunLength);
 
@@ -91,6 +113,9 @@ void AKaelCharacter::BeginPlay()
 	StimuliSource->RegisterForSense(UAISense_Sight::StaticClass());
 	StimuliSource->RegisterForSense(UAISense_Hearing::StaticClass());
 	StimuliSource->RegisterWithPerceptionSystem();
+
+	BreathLoop = RupturaAssets::CreateLoop2D(this, TEXT("respiracao_loop"), 0.01f);
+	SetFirstPerson(bStartInFirstPerson);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -125,7 +150,9 @@ void AKaelCharacter::BuildInput()
 	IA_Weapon1 = MakeAction(TEXT("IA_Arma1"), EInputActionValueType::Boolean);
 	IA_Weapon2 = MakeAction(TEXT("IA_Arma2"), EInputActionValueType::Boolean);
 	IA_SwitchWeapon = MakeAction(TEXT("IA_TrocarArma"), EInputActionValueType::Boolean);
-	IA_Cover = MakeAction(TEXT("IA_Cobertura"), EInputActionValueType::Boolean);
+	IA_Melee = MakeAction(TEXT("IA_Faca"), EInputActionValueType::Boolean);
+	IA_Flashlight = MakeAction(TEXT("IA_Lanterna"), EInputActionValueType::Boolean);
+	IA_View = MakeAction(TEXT("IA_Camera"), EInputActionValueType::Boolean);
 	IA_Interact = MakeAction(TEXT("IA_Interagir"), EInputActionValueType::Boolean);
 
 	Mapping = NewObject<UInputMappingContext>(this, TEXT("IMC_Kael"));
@@ -161,7 +188,6 @@ void AKaelCharacter::BuildInput()
 	Mapping->MapKey(IA_Crouch, EKeys::C);
 	Mapping->MapKey(IA_Crouch, EKeys::LeftControl);
 	Mapping->MapKey(IA_Dodge, EKeys::LeftAlt);
-	Mapping->MapKey(IA_Dodge, EKeys::V);
 	Mapping->MapKey(IA_Aim, EKeys::RightMouseButton);
 	Mapping->MapKey(IA_Fire, EKeys::LeftMouseButton);
 	Mapping->MapKey(IA_Reload, EKeys::R);
@@ -170,7 +196,10 @@ void AKaelCharacter::BuildInput()
 	Mapping->MapKey(IA_Weapon2, EKeys::Two);
 	Mapping->MapKey(IA_SwitchWeapon, EKeys::MouseScrollUp);
 	Mapping->MapKey(IA_SwitchWeapon, EKeys::MouseScrollDown);
-	Mapping->MapKey(IA_Cover, EKeys::Q);
+	Mapping->MapKey(IA_Melee, EKeys::Q);
+	Mapping->MapKey(IA_Melee, EKeys::ThumbMouseButton);
+	Mapping->MapKey(IA_Flashlight, EKeys::F);
+	Mapping->MapKey(IA_View, EKeys::V);
 	Mapping->MapKey(IA_Interact, EKeys::E);
 
 	// Controle
@@ -185,7 +214,9 @@ void AKaelCharacter::BuildInput()
 	Mapping->MapKey(IA_Reload, EKeys::Gamepad_RightShoulder);
 	Mapping->MapKey(IA_Grenade, EKeys::Gamepad_LeftShoulder);
 	Mapping->MapKey(IA_SwitchWeapon, EKeys::Gamepad_FaceButton_Top);
-	Mapping->MapKey(IA_Cover, EKeys::Gamepad_RightThumbstick);
+	Mapping->MapKey(IA_Melee, EKeys::Gamepad_RightThumbstick);
+	Mapping->MapKey(IA_Flashlight, EKeys::Gamepad_DPad_Up);
+	Mapping->MapKey(IA_View, EKeys::Gamepad_DPad_Right);
 	Mapping->MapKey(IA_Interact, EKeys::Gamepad_FaceButton_Left);
 }
 
@@ -219,7 +250,9 @@ void AKaelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	EIC->BindAction(IA_Weapon1, ETriggerEvent::Started, this, &AKaelCharacter::Input_Weapon1);
 	EIC->BindAction(IA_Weapon2, ETriggerEvent::Started, this, &AKaelCharacter::Input_Weapon2);
 	EIC->BindAction(IA_SwitchWeapon, ETriggerEvent::Started, this, &AKaelCharacter::Input_SwitchWeapon);
-	EIC->BindAction(IA_Cover, ETriggerEvent::Started, this, &AKaelCharacter::Input_Cover);
+	EIC->BindAction(IA_Melee, ETriggerEvent::Started, this, &AKaelCharacter::Input_Melee);
+	EIC->BindAction(IA_Flashlight, ETriggerEvent::Started, this, &AKaelCharacter::Input_Flashlight);
+	EIC->BindAction(IA_View, ETriggerEvent::Started, this, &AKaelCharacter::Input_ToggleView);
 	EIC->BindAction(IA_Interact, ETriggerEvent::Started, this, &AKaelCharacter::Input_InteractStart);
 	EIC->BindAction(IA_Interact, ETriggerEvent::Completed, this, &AKaelCharacter::Input_InteractStop);
 }
@@ -248,40 +281,10 @@ void AKaelCharacter::Input_Move(const FInputActionValue& Value)
 	{
 		return;
 	}
-
 	const FVector2D In = Value.Get<FVector2D>();
 	const FRotator YawRot(0.f, Controller->GetControlRotation().Yaw, 0.f);
-	const FVector Forward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
-	const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
-	const FVector Desired = Forward * In.Y + Right * In.X;
-
-	if (bInCover)
-	{
-		// Afastar-se da parede sai da cobertura.
-		if (FVector::DotProduct(Desired, CoverNormal) > 0.75f && In.Size() > 0.5f)
-		{
-			ExitCover();
-			AddMovementInput(Desired);
-			return;
-		}
-		// Desliza ao longo da parede, parando na borda.
-		const FVector Tangent = FVector::CrossProduct(FVector::UpVector, CoverNormal).GetSafeNormal();
-		const float Along = FVector::DotProduct(Desired, Tangent);
-		if (FMath::Abs(Along) < 0.2f)
-		{
-			return;
-		}
-		const FVector Step = Tangent * FMath::Sign(Along);
-		const FVector Probe = GetActorLocation() + Step * (GetCapsuleComponent()->GetScaledCapsuleRadius() + 25.f);
-		if (HasWallAt(Probe, -30.f))
-		{
-			AddMovementInput(Step, FMath::Abs(Along));
-		}
-		return;
-	}
-
-	AddMovementInput(Forward, In.Y);
-	AddMovementInput(Right, In.X);
+	AddMovementInput(FRotationMatrix(YawRot).GetUnitAxis(EAxis::X), In.Y);
+	AddMovementInput(FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y), In.X);
 }
 
 void AKaelCharacter::Input_Look(const FInputActionValue& Value)
@@ -310,7 +313,7 @@ void AKaelCharacter::Input_LookPad(const FInputActionValue& Value)
 
 bool AKaelCharacter::CanJumpInternal_Implementation() const
 {
-	return !bInputLocked && !bDead && !bInCover && Super::CanJumpInternal_Implementation();
+	return !bInputLocked && !bDead && !bExhausted && Super::CanJumpInternal_Implementation();
 }
 
 void AKaelCharacter::Input_JumpStart()
@@ -339,10 +342,6 @@ void AKaelCharacter::Input_SprintStart()
 		return;
 	}
 	bSprinting = true;
-	if (bInCover)
-	{
-		ExitCover();
-	}
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -356,7 +355,7 @@ void AKaelCharacter::Input_SprintStop()
 
 void AKaelCharacter::Input_Crouch()
 {
-	if (bInputLocked || bDead || bInCover)
+	if (bInputLocked || bDead)
 	{
 		return;
 	}
@@ -374,7 +373,7 @@ void AKaelCharacter::Input_Crouch()
 void AKaelCharacter::Input_Dodge()
 {
 	const float Now = GetWorld()->GetTimeSeconds();
-	if (bInputLocked || bDead || Now < NextDodgeTime || GetCharacterMovement()->IsFalling())
+	if (bInputLocked || bDead || Now < NextDodgeTime || GetCharacterMovement()->IsFalling() || Stamina < 0.2f)
 	{
 		return;
 	}
@@ -384,20 +383,24 @@ void AKaelCharacter::Input_Dodge()
 	{
 		Dir = -GetActorForwardVector().GetSafeNormal2D(); // sem direção: recua
 	}
-
-	ExitCover();
 	if (bIsCrouched)
 	{
 		UnCrouch();
 	}
 
-	LaunchCharacter(Dir * DodgeStrength + FVector(0.f, 0.f, 140.f), true, true);
+	// Um passo desesperado para o lado, não uma cambalhota de herói.
+	LaunchCharacter(Dir * DodgeStrength + FVector(0.f, 0.f, 90.f), true, true);
 	bDodging = true;
 	DodgeSpin = 0.f;
-	DodgeEndTime = Now + 0.45f;
-	NextDodgeTime = Now + 0.9f;
-	Health->bInvulnerable = true; // janela curta de invulnerabilidade
-	SetActorRotation(FRotator(0.f, Dir.Rotation().Yaw, 0.f));
+	DodgeEndTime = Now + 0.35f;
+	NextDodgeTime = Now + 1.1f;
+	Stamina = FMath::Max(0.f, Stamina - 0.2f);
+	LastSprintTime = Now;
+	Health->bInvulnerable = true;
+	if (!bFirstPerson)
+	{
+		SetActorRotation(FRotator(0.f, Dir.Rotation().Yaw, 0.f));
+	}
 	RupturaAssets::PlaySound3D(this, TEXT("esquiva"), GetActorLocation(), 0.7f);
 }
 
@@ -459,7 +462,7 @@ void AKaelCharacter::Input_Grenade()
 
 	if (AGrenade* G = GetWorld()->SpawnActor<AGrenade>(AGrenade::StaticClass(), SpawnLoc, CamRot, Params))
 	{
-		const FVector Velocity = CamRot.Vector() * 1350.f + FVector(0.f, 0.f, 320.f) + GetVelocity() * 0.4f;
+		const FVector Velocity = CamRot.Vector() * 1250.f + FVector(0.f, 0.f, 300.f) + GetVelocity() * 0.4f;
 		G->Launch(Velocity, false);
 		--Grenades;
 		NextGrenadeTime = Now + 0.8f;
@@ -495,20 +498,99 @@ void AKaelCharacter::EquipWeapon(int32 Index)
 	SoldierBody::SetGunLength(Body, Weapon->GetDef().GunLength);
 }
 
-void AKaelCharacter::Input_Cover()
+void AKaelCharacter::Input_Melee()
 {
-	if (bInputLocked || bDead)
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (bInputLocked || bDead || Now < NextMeleeTime || !Controller)
 	{
 		return;
 	}
-	if (bInCover)
+	NextMeleeTime = Now + 0.7f;
+	MeleeTime = Now;
+	Stamina = FMath::Max(0.f, Stamina - 0.08f);
+	LastSprintTime = Now;
+
+	const FVector Forward = FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f).Vector();
+	SetActorRotation(Forward.Rotation());
+
+	const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 30.f);
+	const FVector End = Start + Forward * 130.f;
+	TArray<FHitResult> Hits;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(KaelKnife), false, this);
+	GetWorld()->SweepMultiByChannel(Hits, Start, End, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeSphere(45.f), Query);
+
+	TSet<AActor*> Done;
+	bool bHitAny = false;
+	for (const FHitResult& H : Hits)
 	{
-		ExitCover();
+		AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(H.GetActor());
+		if (!Enemy || Enemy->IsDead() || Done.Contains(Enemy))
+		{
+			continue;
+		}
+		Done.Add(Enemy);
+		// Golpe de misericórdia em quem ainda está caído.
+		const float Damage = KnifeDamage * (Enemy->IsDormant() ? 2.f : 1.f);
+		UGameplayStatics::ApplyPointDamage(Enemy, Damage, Forward, H, GetController(), this, UDamageType::StaticClass());
+		if (!Enemy->IsBoss())
+		{
+			Enemy->Shove(Forward, 520.f);
+		}
+		RupturaFx::Blood(GetWorld(), Enemy->GetActorLocation() + FVector(0.f, 0.f, 40.f), Forward, 6);
+		bHitAny = true;
 	}
-	else
+
+	RupturaAssets::PlaySound3D(this, bHitAny ? FName(TEXT("faca_acerto")) : FName(TEXT("faca")), GetActorLocation() + Forward * 60.f, 0.9f, FMath::FRandRange(0.92f, 1.08f));
+	AddTrauma(bHitAny ? 0.15f : 0.04f);
+	// A faca é quase silenciosa.
+	UAISense_Hearing::ReportNoiseEvent(GetWorld(), GetActorLocation(), 0.2f, this, 350.f, TEXT("Faca"));
+}
+
+void AKaelCharacter::Input_Flashlight()
+{
+	if (bDead)
 	{
-		TryEnterCover();
+		return;
 	}
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (!bFlashlightOn && Battery <= 0.f)
+	{
+		RupturaAssets::PlaySound2D(this, TEXT("lanterna_click"), 0.5f, 0.8f);
+		if (AKaelPlayerController* PC = Cast<AKaelPlayerController>(GetController()))
+		{
+			PC->ShowToast(FText::FromString(TEXT("Sem bateria. Procure pilhas.")), 2.f);
+		}
+		return;
+	}
+	bFlashlightOn = !bFlashlightOn;
+	LastFlashlightToggle = Now;
+	RupturaAssets::PlaySound2D(this, TEXT("lanterna_click"), 0.6f, bFlashlightOn ? 1.f : 0.9f);
+}
+
+void AKaelCharacter::Input_ToggleView()
+{
+	if (!bDead)
+	{
+		SetFirstPerson(!bFirstPerson);
+	}
+}
+
+void AKaelCharacter::SetFirstPerson(bool bEnable)
+{
+	bFirstPerson = bEnable;
+	// Em primeira pessoa o corpo some da câmera, mas continua projetando sombra.
+	TArray<USceneComponent*> Children;
+	BodyRoot->GetChildrenComponents(true, Children);
+	for (USceneComponent* Child : Children)
+	{
+		if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Child))
+		{
+			Prim->SetOwnerNoSee(bEnable);
+			Prim->SetCastHiddenShadow(true);
+		}
+	}
+	CameraBoom->bDoCollisionTest = !bEnable;
+	CameraBoom->bEnableCameraLag = !bEnable;
 }
 
 void AKaelCharacter::Input_InteractStart()
@@ -524,99 +606,6 @@ void AKaelCharacter::Input_InteractStop()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Cobertura
-// ---------------------------------------------------------------------------------------------
-
-bool AKaelCharacter::HasWallAt(const FVector& Point, float Height) const
-{
-	const FVector Start = Point + FVector(0.f, 0.f, Height);
-	const FVector End = Start - CoverNormal * (GetCapsuleComponent()->GetScaledCapsuleRadius() + 60.f);
-	FHitResult Hit;
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(KaelCoverProbe), false, this);
-	return GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Query);
-}
-
-bool AKaelCharacter::TryEnterCover()
-{
-	if (!Controller)
-	{
-		return false;
-	}
-
-	const FVector Look = FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f).Vector();
-	const FVector Start = GetActorLocation() + FVector(0.f, 0.f, -30.f);
-	FHitResult Hit;
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(KaelCoverEnter), false, this);
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, Start + Look * 180.f, ECC_Visibility, Query))
-	{
-		return false;
-	}
-	if (FMath::Abs(Hit.ImpactNormal.Z) > 0.3f)
-	{
-		return false; // não é uma parede
-	}
-
-	CoverNormal = Hit.ImpactNormal.GetSafeNormal2D();
-	const float Radius = GetCapsuleComponent()->GetScaledCapsuleRadius();
-	FVector Target = Hit.ImpactPoint + CoverNormal * (Radius + 6.f);
-	Target.Z = GetActorLocation().Z;
-	SetActorLocation(Target, true);
-
-	// Cobertura baixa: nada bloqueando na altura do peito.
-	FHitResult High;
-	const FVector HighStart = Target + FVector(0.f, 0.f, 60.f);
-	bCoverLow = !GetWorld()->LineTraceSingleByChannel(High, HighStart, HighStart - CoverNormal * (Radius + 70.f), ECC_Visibility, Query);
-
-	bInCover = true;
-	bSprinting = false;
-	if (bCoverLow)
-	{
-		Crouch();
-	}
-	RupturaAssets::PlaySound3D(this, TEXT("cobertura"), GetActorLocation(), 0.6f);
-	return true;
-}
-
-void AKaelCharacter::ExitCover()
-{
-	if (!bInCover)
-	{
-		return;
-	}
-	bInCover = false;
-	if (bCoverLow && bIsCrouched)
-	{
-		UnCrouch();
-	}
-}
-
-void AKaelCharacter::UpdateCover(float DeltaSeconds)
-{
-	if (!bInCover)
-	{
-		return;
-	}
-	if (!HasWallAt(GetActorLocation(), -30.f))
-	{
-		ExitCover();
-		return;
-	}
-	if (bCoverLow)
-	{
-		// Levanta para mirar/atirar por cima da cobertura baixa.
-		const bool bWantUp = bAiming || bFireHeld;
-		if (bWantUp && bIsCrouched)
-		{
-			UnCrouch();
-		}
-		else if (!bWantUp && !bIsCrouched)
-		{
-			Crouch();
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------------------------
 // Tick
 // ---------------------------------------------------------------------------------------------
 
@@ -625,19 +614,19 @@ void AKaelCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateMovementMode(DeltaSeconds);
-	UpdateCover(DeltaSeconds);
+	UpdateStamina(DeltaSeconds);
+	UpdateAimPoint();
+	UpdateFlashlight(DeltaSeconds);
+	UpdateFear(DeltaSeconds);
 	UpdateCamera(DeltaSeconds);
+	UpdateAimSway(DeltaSeconds);
+	UpdatePostProcess(DeltaSeconds);
 	UpdateFiring();
 	UpdateInteraction(DeltaSeconds);
-	UpdateAimTarget();
 	UpdateFootsteps(DeltaSeconds);
 	UpdateBodyPose(DeltaSeconds);
-
-	// Regeneração lenta até 35 de vida, após 6 s sem dano (evita ficar travado sem kits médicos).
-	if (!bDead && Health->Health < 35.f && GetWorld()->GetTimeSeconds() - LastDamageTime > 6.f)
-	{
-		Health->Heal(FMath::Min(4.f * DeltaSeconds, 35.f - Health->Health));
-	}
+	UpdateHeartAndBreath(DeltaSeconds);
+	// Sem regeneração: só kits médicos curam.
 }
 
 void AKaelCharacter::UpdateMovementMode(float DeltaSeconds)
@@ -651,22 +640,15 @@ void AKaelCharacter::UpdateMovementMode(float DeltaSeconds)
 		Health->bInvulnerable = false;
 	}
 
-	float Speed = JogSpeed;
-	if (bAiming)
+	const bool bCanSprint = bSprinting && !bExhausted && !bFireHeld && !bAiming;
+	float Speed = bAiming ? AimSpeed : (bCanSprint ? SprintSpeed : WalkSpeed);
+	if (Health->GetFraction() < 0.3f)
 	{
-		Speed = AimSpeed;
-	}
-	else if (bSprinting && !bFireHeld)
-	{
-		Speed = SprintSpeed;
-	}
-	if (bInCover)
-	{
-		Speed = 230.f;
+		Speed *= 0.85f; // ferido, mancando
 	}
 	if (Now < StaggerUntil)
 	{
-		Speed *= 0.6f; // reação a tiros
+		Speed *= 0.5f;
 	}
 	Move->MaxWalkSpeed = Speed;
 
@@ -675,8 +657,13 @@ void AKaelCharacter::UpdateMovementMode(float DeltaSeconds)
 		return;
 	}
 
-	const bool bCombatFacing = bAiming || bFireHeld || (Now - LastShotTime) < 0.8f;
-	if (bDodging)
+	const bool bCombatFacing = bAiming || bFireHeld || (Now - LastShotTime) < 0.8f || (Now - MeleeTime) < 0.4f;
+	if (bFirstPerson && Controller)
+	{
+		Move->bOrientRotationToMovement = false;
+		SetActorRotation(FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f));
+	}
+	else if (bDodging)
 	{
 		Move->bOrientRotationToMovement = false;
 	}
@@ -686,47 +673,308 @@ void AKaelCharacter::UpdateMovementMode(float DeltaSeconds)
 		const FRotator Target(0.f, Controller->GetControlRotation().Yaw, 0.f);
 		SetActorRotation(FMath::RInterpTo(GetActorRotation(), Target, DeltaSeconds, 18.f));
 	}
-	else if (bInCover)
-	{
-		Move->bOrientRotationToMovement = false;
-		const FRotator Target(0.f, (-CoverNormal).Rotation().Yaw, 0.f);
-		SetActorRotation(FMath::RInterpTo(GetActorRotation(), Target, DeltaSeconds, 10.f));
-	}
 	else
 	{
 		Move->bOrientRotationToMovement = true;
 	}
 }
 
+void AKaelCharacter::UpdateStamina(float DeltaSeconds)
+{
+	const float Now = GetWorld()->GetTimeSeconds();
+	const float Speed = GetVelocity().Size2D();
+	if (bSprinting && !bExhausted && !bAiming && Speed > 250.f)
+	{
+		Stamina -= DeltaSeconds / FMath::Max(1.f, SprintDuration);
+		LastSprintTime = Now;
+		if (Stamina <= 0.f)
+		{
+			Stamina = 0.f;
+			bExhausted = true;
+			RupturaAssets::PlaySound2D(this, TEXT("ofegar"), 0.8f);
+		}
+	}
+	else if (Now - LastSprintTime > 0.8f)
+	{
+		Stamina = FMath::Min(1.f, Stamina + DeltaSeconds * (Speed < 50.f ? 0.22f : 0.13f));
+	}
+	if (bExhausted && Stamina > 0.35f)
+	{
+		bExhausted = false;
+	}
+}
+
+void AKaelCharacter::UpdateAimPoint()
+{
+	if (!Controller)
+	{
+		AimPoint = GetActorLocation() + GetActorForwardVector() * 1000.f;
+		return;
+	}
+	FVector CamLoc;
+	FRotator CamRot;
+	Controller->GetPlayerViewPoint(CamLoc, CamRot);
+	FHitResult Hit;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(KaelAimPoint), false, this);
+	const FVector End = CamLoc + CamRot.Vector() * 6000.f;
+	AimPoint = GetWorld()->LineTraceSingleByChannel(Hit, CamLoc, End, ECC_Visibility, Query) ? Hit.ImpactPoint : End;
+}
+
+FVector AKaelCharacter::GetFlashlightLocation() const
+{
+	return Flashlight ? Flashlight->GetComponentLocation() : GetActorLocation();
+}
+
+FVector AKaelCharacter::GetFlashlightDirection() const
+{
+	return Flashlight ? Flashlight->GetForwardVector() : GetActorForwardVector();
+}
+
+float AKaelCharacter::AddBattery(float Amount)
+{
+	const float Before = Battery;
+	Battery = FMath::Clamp(Battery + Amount, 0.f, 1.f);
+	return Battery - Before;
+}
+
+void AKaelCharacter::UpdateFlashlight(float DeltaSeconds)
+{
+	const float Now = GetWorld()->GetTimeSeconds();
+
+	// Posição: em 1ª pessoa, na mão junto à câmera; em 3ª, presa no ombro/capacete, à frente e acima
+	// da arma e dos braços (assim o próprio corpo não bloqueia o feixe), apontando para a mira.
+	FVector Loc;
+	FVector Dir;
+	if (Controller && bFirstPerson)
+	{
+		FVector CamLoc;
+		FRotator CamRot;
+		Controller->GetPlayerViewPoint(CamLoc, CamRot);
+		Loc = CamLoc + CamRot.RotateVector(FVector(15.f, 16.f, -14.f));
+	}
+	else
+	{
+		Loc = GetActorLocation() + GetActorRotation().RotateVector(FVector(40.f, -18.f, 72.f));
+	}
+	Dir = (AimPoint - Loc).GetSafeNormal();
+	if (Dir.IsNearlyZero())
+	{
+		Dir = GetActorForwardVector();
+	}
+	// O feixe acompanha a mira com um leve atraso (mão/corpo).
+	const FRotator NewRot = FMath::RInterpTo(Flashlight->GetComponentRotation(), Dir.Rotation(), DeltaSeconds, bFirstPerson ? 14.f : 10.f);
+	Flashlight->SetWorldLocationAndRotation(Loc, NewRot);
+
+	const bool bOn = IsFlashlightOn();
+	if (bOn && !bDead)
+	{
+		Battery = FMath::Max(0.f, Battery - DeltaSeconds / FMath::Max(1.f, BatteryLife));
+		if (Battery <= 0.f)
+		{
+			bFlashlightOn = false;
+			RupturaAssets::PlaySound2D(this, TEXT("lanterna_click"), 0.6f, 0.7f);
+			if (AKaelPlayerController* PC = Cast<AKaelPlayerController>(GetController()))
+			{
+				PC->ShowToast(FText::FromString(TEXT("A lanterna apagou. Sem bateria.")), 3.f);
+			}
+		}
+	}
+
+	float K = IsFlashlightOn() ? 1.f : 0.f;
+	if (K > 0.f)
+	{
+		// Bateria fraca: luz amarelada e mais fraca; falhas com bateria no fim ou interferência.
+		K *= FMath::Lerp(0.3f, 1.f, FMath::Clamp(Battery / 0.25f, 0.f, 1.f));
+		const float FlickerRate = (Battery < 0.12f ? 0.6f : 0.f) + Interference * 2.5f;
+		if (Now >= FlickerUntil && FMath::FRand() < FlickerRate * DeltaSeconds)
+		{
+			FlickerUntil = Now + FMath::FRandRange(0.08f, 0.5f);
+		}
+		if (Now < FlickerUntil)
+		{
+			K *= FMath::FRand() < 0.5f ? 0.03f : 0.5f;
+		}
+	}
+	Flashlight->SetIntensity(FlashlightCandelas * K);
+	Flashlight->SetVisibility(K > 0.001f);
+	Interference = FMath::Max(0.f, Interference - DeltaSeconds * 0.4f);
+}
+
+void AKaelCharacter::AddFear(float Amount)
+{
+	Fear = FMath::Clamp(Fear + Amount, 0.f, 1.f);
+}
+
+void AKaelCharacter::UpdateFear(float DeltaSeconds)
+{
+	FearScanTimer -= DeltaSeconds;
+	if (FearScanTimer <= 0.f)
+	{
+		FearScanTimer = 0.25f;
+		float Closest = TNumericLimits<float>::Max();
+		float BossDist = TNumericLimits<float>::Max();
+		bool bHunted = false;
+		for (TActorIterator<AEnemyCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->IsDead())
+			{
+				continue;
+			}
+			const float D = FVector::Dist(It->GetActorLocation(), GetActorLocation());
+			if (It->IsBoss())
+			{
+				if (It->IsActive())
+				{
+					BossDist = FMath::Min(BossDist, D);
+				}
+				continue;
+			}
+			if (!It->IsActive())
+			{
+				continue; // os "cadáveres" no chão ainda não assustam... ainda.
+			}
+			Closest = FMath::Min(Closest, D);
+			if (It->GetAlert() == EEnemyAlert::Combate && D < 2500.f)
+			{
+				bHunted = true;
+			}
+		}
+
+		float Target = 0.f;
+		if (Closest < 1600.f)
+		{
+			Target = FMath::Max(Target, (1.f - Closest / 1600.f) * 0.85f);
+		}
+		if (bHunted)
+		{
+			Target = FMath::Max(Target, 0.55f);
+		}
+		if (BossDist < 4000.f)
+		{
+			Target = FMath::Max(Target, 0.7f + 0.3f * (1.f - BossDist / 4000.f));
+			// O Hospedeiro interfere em tudo que é elétrico.
+			SetFlashlightInterference(0.6f * FMath::Clamp(1.f - BossDist / 3000.f, 0.f, 1.f));
+		}
+		if (!IsFlashlightOn())
+		{
+			Target += 0.15f;
+		}
+		Target += (1.f - Health->GetFraction()) * 0.35f;
+		FearTarget = FMath::Clamp(Target, 0.f, 1.f);
+	}
+	Fear = Fear < FearTarget
+		? FMath::FInterpConstantTo(Fear, FearTarget, DeltaSeconds, 1.2f)
+		: FMath::FInterpConstantTo(Fear, FearTarget, DeltaSeconds, 0.12f);
+}
+
 void AKaelCharacter::UpdateCamera(float DeltaSeconds)
 {
-	const bool bMoving = GetVelocity().Size2D() > 50.f;
-	const float TargetLength = bAiming ? 150.f : (bInCover ? 230.f : ((bSprinting && bMoving) ? 330.f : 290.f));
+	const float Speed = GetVelocity().Size2D();
+	const bool bMoving = Speed > 50.f;
+	const bool bRunning = bSprinting && !bExhausted && bMoving && !bAiming;
+
+	float TargetLength, TargetFov;
+	FVector TargetSocket, TargetOffset;
+	if (bFirstPerson)
+	{
+		TargetLength = 0.f;
+		TargetSocket = FVector::ZeroVector;
+		TargetOffset = FVector(0.f, 0.f, 68.f);
+		TargetFov = bAiming ? 62.f : (bRunning ? 86.f : 80.f);
+	}
+	else
+	{
+		TargetLength = bAiming ? 105.f : (bRunning ? 200.f : 165.f);
+		TargetSocket = bAiming ? FVector(0.f, 48.f, 38.f) : FVector(0.f, 58.f, 42.f);
+		TargetOffset = FVector::ZeroVector;
+		TargetFov = bAiming ? 58.f : (bRunning ? 80.f : 74.f);
+	}
 	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetLength, DeltaSeconds, 10.f);
+	CameraBoom->SocketOffset = FMath::VInterpTo(CameraBoom->SocketOffset, TargetSocket, DeltaSeconds, 10.f);
+	CameraBoom->TargetOffset = FMath::VInterpTo(CameraBoom->TargetOffset, TargetOffset, DeltaSeconds, 12.f);
+	FollowCamera->SetFieldOfView(FMath::FInterpTo(FollowCamera->FieldOfView, TargetFov, DeltaSeconds, 8.f));
 
-	const FVector TargetOffset = bAiming ? FVector(0.f, 58.f, 48.f) : FVector(0.f, 70.f, 55.f);
-	CameraBoom->SocketOffset = FMath::VInterpTo(CameraBoom->SocketOffset, TargetOffset, DeltaSeconds, 10.f);
+	// Balanço da caminhada: mais forte em 1ª pessoa e correndo.
+	if (bMoving && !GetCharacterMovement()->IsFalling())
+	{
+		BobPhase += DeltaSeconds * (4.f + Speed * 0.018f);
+	}
+	float BobAmp = (bFirstPerson ? 1.6f : 0.7f) * FMath::Clamp(Speed / 330.f, 0.f, 1.6f) * (bIsCrouched ? 0.5f : 1.f);
+	if (bDead)
+	{
+		BobAmp = 0.f;
+	}
+	const FVector Bob(0.f, FMath::Cos(BobPhase) * BobAmp * 0.8f, -FMath::Abs(FMath::Sin(BobPhase)) * BobAmp * 1.4f);
 
-	const float TargetFov = bAiming ? 62.f : ((bSprinting && bMoving) ? 96.f : 90.f);
-	FollowCamera->SetFieldOfView(FMath::FInterpTo(FollowCamera->FieldOfView, TargetFov, DeltaSeconds, 10.f));
+	// Câmera "na mão": respiração, medo e cansaço deixam a imagem instável.
+	const float Now = GetWorld()->GetTimeSeconds();
+	const float Hand = 0.25f + Fear * 0.9f + (1.f - Stamina) * 0.8f;
+	const FRotator HandRot(
+		FMath::PerlinNoise1D(Now * 0.6f) * Hand,
+		FMath::PerlinNoise1D(Now * 0.5f + 20.f) * Hand,
+		FMath::PerlinNoise1D(Now * 0.4f + 40.f) * Hand * 0.6f);
 
-	// Tremor de câmera baseado em "trauma" (tiros, explosões, dano).
+	// Tremor por "trauma" (golpes, explosões, rugidos).
 	Trauma = FMath::Max(0.f, Trauma - DeltaSeconds * 0.9f);
 	const float Shake = Trauma * Trauma;
-	const float T = GetWorld()->GetTimeSeconds() * 25.f;
-	FollowCamera->SetRelativeRotation(FRotator(
+	const float T = Now * 25.f;
+	const FRotator ShakeRot(
 		FMath::PerlinNoise1D(T) * 4.f * Shake,
 		FMath::PerlinNoise1D(T + 31.7f) * 4.f * Shake,
-		FMath::PerlinNoise1D(T + 77.1f) * 6.f * Shake));
-	FollowCamera->SetRelativeLocation(FVector(0.f, FMath::PerlinNoise1D(T + 11.3f) * 8.f * Shake, FMath::PerlinNoise1D(T + 51.9f) * 8.f * Shake));
+		FMath::PerlinNoise1D(T + 77.1f) * 6.f * Shake);
+	const FVector ShakeLoc(0.f, FMath::PerlinNoise1D(T + 11.3f) * 8.f * Shake, FMath::PerlinNoise1D(T + 51.9f) * 8.f * Shake);
+
+	FollowCamera->SetRelativeRotation(HandRot + ShakeRot);
+	FollowCamera->SetRelativeLocation(Bob + ShakeLoc);
 
 	DamageFlash = FMath::FInterpTo(DamageFlash, 0.f, DeltaSeconds, 2.5f);
+}
+
+void AKaelCharacter::UpdateAimSway(float DeltaSeconds)
+{
+	// Mãos trêmulas: a mira oscila de verdade (não só a câmera) com medo, cansaço e ferimentos.
+	const float LowHealth = FMath::Clamp((0.45f - Health->GetFraction()) / 0.45f, 0.f, 1.f);
+	const float TargetAmp = bAiming ? (0.15f + Fear * 0.9f + (1.f - Stamina) * 0.6f + LowHealth * 0.5f) : 0.f;
+	SwayAmp = FMath::FInterpTo(SwayAmp, TargetAmp, DeltaSeconds, 4.f);
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	const FRotator Target(FMath::PerlinNoise1D(Now * 0.9f + 5.f) * SwayAmp, FMath::PerlinNoise1D(Now * 0.8f + 50.f) * SwayAmp, 0.f);
+	const FRotator Delta = Target - AppliedSway;
+	AppliedSway = Target;
+	if (Controller && !bInputLocked && !bDead)
+	{
+		FRotator Control = Controller->GetControlRotation();
+		Control.Pitch += Delta.Pitch;
+		Control.Yaw += Delta.Yaw;
+		Controller->SetControlRotation(Control);
+	}
+}
+
+void AKaelCharacter::UpdatePostProcess(float DeltaSeconds)
+{
+	const float Now = GetWorld()->GetTimeSeconds();
+	const float LowHealth = bDead ? 1.f : FMath::Clamp((0.45f - Health->GetFraction()) / 0.45f, 0.f, 1.f);
+	const float Pulse = 0.5f + 0.5f * FMath::Sin(Now * 6.f);
+
+	FPostProcessSettings& P = FollowCamera->PostProcessSettings;
+	P.bOverride_VignetteIntensity = true;
+	P.VignetteIntensity = 0.5f + Fear * 0.45f + LowHealth * 0.5f * Pulse;
+	P.bOverride_SceneFringeIntensity = true;
+	P.SceneFringeIntensity = 0.3f + Fear * 2.2f + DamageFlash * 4.f;
+	const float Sat = FMath::Clamp(0.82f - Fear * 0.3f - LowHealth * 0.45f, 0.15f, 1.f);
+	P.bOverride_ColorSaturation = true;
+	P.ColorSaturation = FVector4(Sat, Sat, Sat, 1.f);
+	P.bOverride_FilmGrainIntensity = true;
+	P.FilmGrainIntensity = 0.32f + Fear * 0.25f;
+	const float Red = FMath::Clamp(LowHealth * 0.35f + DamageFlash * 0.35f, 0.f, 0.7f);
+	P.bOverride_SceneColorTint = true;
+	P.SceneColorTint = FLinearColor(1.f, 1.f - Red, 1.f - Red, 1.f);
 }
 
 float AKaelCharacter::GetCurrentSpreadDeg() const
 {
 	const bool bMoving = GetVelocity().Size2D() > 60.f;
-	return Weapon->GetSpread(bAiming, bMoving) * (bIsCrouched ? 0.8f : 1.f);
+	return Weapon->GetSpread(bAiming, bMoving) * (bIsCrouched ? 0.8f : 1.f) + Fear * 0.8f;
 }
 
 FVector AKaelCharacter::GetMuzzleLocation() const
@@ -745,10 +993,6 @@ void AKaelCharacter::UpdateFiring()
 	if (!Def.bAutomatic && !bSemiShotQueued)
 	{
 		return;
-	}
-	if (bInCover && bCoverLow && bIsCrouched)
-	{
-		return; // ainda levantando da cobertura
 	}
 	if (Weapon->GetAmmo().Mag > 0 && !Weapon->CanFire())
 	{
@@ -771,17 +1015,16 @@ void AKaelCharacter::UpdateFiring()
 		return;
 	}
 
-	const float Now = GetWorld()->GetTimeSeconds();
-	LastShotTime = Now;
+	LastShotTime = GetWorld()->GetTimeSeconds();
 	Body.Kick = 1.f;
 
 	// Recuo aplicado direto na rotação de controle (graus).
 	FRotator ControlRot = Controller->GetControlRotation();
-	const float K = bAiming ? 0.55f : 1.f;
+	const float K = bAiming ? 0.6f : 1.f;
 	ControlRot.Pitch += Def.RecoilPitch * K;
 	ControlRot.Yaw += FMath::FRandRange(-Def.RecoilYaw, Def.RecoilYaw) * K;
 	Controller->SetControlRotation(ControlRot);
-	AddTrauma(0.04f);
+	AddTrauma(Def.Pellets > 1 ? 0.22f : 0.06f);
 
 	if (URupturaGameInstance* GI = URupturaGameInstance::Get(this))
 	{
@@ -790,12 +1033,6 @@ void AKaelCharacter::UpdateFiring()
 		{
 			++GI->ShotsHit;
 		}
-	}
-	if (Result.bHitPawn)
-	{
-		HitMarkerTime = Now;
-		bLastHitKill = Result.bKilled;
-		RupturaAssets::PlaySound2D(this, Result.bKilled ? FName(TEXT("confirmacao_abate")) : FName(TEXT("marcador_acerto")), 0.5f);
 	}
 }
 
@@ -881,49 +1118,28 @@ bool AKaelCharacter::GetInteractionInfo(FText& OutPrompt, float& OutProgress, bo
 	return true;
 }
 
-void AKaelCharacter::UpdateAimTarget()
-{
-	bAimingAtEnemy = false;
-	if (!Controller || bDead)
-	{
-		return;
-	}
-	FVector CamLoc;
-	FRotator CamRot;
-	Controller->GetPlayerViewPoint(CamLoc, CamRot);
-	FHitResult Hit;
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(KaelAimTarget), false, this);
-	if (GetWorld()->LineTraceSingleByChannel(Hit, CamLoc, CamLoc + CamRot.Vector() * 7000.f, ECC_Pawn, Query))
-	{
-		if (const AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Hit.GetActor()))
-		{
-			bAimingAtEnemy = !Enemy->IsDead();
-		}
-	}
-}
-
 void AKaelCharacter::UpdateFootsteps(float DeltaSeconds)
 {
 	const float Speed = GetVelocity().Size2D();
-	if (bDead || GetCharacterMovement()->IsFalling() || Speed < 150.f)
+	if (bDead || GetCharacterMovement()->IsFalling() || Speed < 120.f)
 	{
 		return;
 	}
-	FootstepTimer -= DeltaSeconds * (Speed / 400.f);
+	FootstepTimer -= DeltaSeconds * (Speed / 330.f);
 	if (FootstepTimer > 0.f)
 	{
 		return;
 	}
-	FootstepTimer = 0.5f;
+	FootstepTimer = 0.52f;
 
 	const FVector Feet = GetActorLocation() - FVector(0.f, 0.f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-	RupturaAssets::PlaySound3D(this, TEXT("passo"), Feet, bIsCrouched ? 0.12f : (Speed > 500.f ? 0.45f : 0.28f), FMath::FRandRange(0.9f, 1.1f));
+	RupturaAssets::PlaySound3D(this, TEXT("passo"), Feet, bIsCrouched ? 0.12f : (Speed > 450.f ? 0.5f : 0.3f), FMath::FRandRange(0.88f, 1.1f));
 
-	// Passos são ouvidos pela IA (correndo = mais longe; agachado = silencioso).
+	// Passos são ouvidos pelos infectados (correndo = bem mais longe; agachado = silencioso).
 	if (!bIsCrouched)
 	{
-		const bool bRunning = Speed > 500.f;
-		UAISense_Hearing::ReportNoiseEvent(GetWorld(), Feet, bRunning ? 0.6f : 0.3f, this, bRunning ? 1100.f : 450.f, TEXT("Passos"));
+		const bool bRunning = Speed > 450.f;
+		UAISense_Hearing::ReportNoiseEvent(GetWorld(), Feet, bRunning ? 0.7f : 0.3f, this, bRunning ? 1400.f : 420.f, TEXT("Passos"));
 	}
 }
 
@@ -938,9 +1154,9 @@ void AKaelCharacter::UpdateBodyPose(float DeltaSeconds)
 
 	if (bDodging)
 	{
-		DodgeSpin = FMath::Min(1.f, DodgeSpin + DeltaSeconds / 0.45f);
-		ScaleZ *= FMath::Lerp(0.6f, 1.f, FMath::Abs(DodgeSpin * 2.f - 1.f));
-		RootRot.Pitch = -25.f * FMath::Sin(DodgeSpin * PI);
+		DodgeSpin = FMath::Min(1.f, DodgeSpin + DeltaSeconds / 0.35f);
+		ScaleZ *= FMath::Lerp(0.8f, 1.f, FMath::Abs(DodgeSpin * 2.f - 1.f));
+		RootRot.Roll = -12.f * FMath::Sin(DodgeSpin * PI);
 	}
 	if (bDead)
 	{
@@ -954,6 +1170,40 @@ void AKaelCharacter::UpdateBodyPose(float DeltaSeconds)
 
 	const bool bAimPose = bAiming || bFireHeld || (Now - LastShotTime) < 0.8f;
 	SoldierBody::Animate(Body, bDead ? 0.f : GetVelocity().Size2D(), DeltaSeconds, bAimPose);
+
+	// Golpe de faca: o braço direito desce em arco.
+	const float MeleeAge = Now - MeleeTime;
+	if (MeleeAge < 0.35f && Body.ShoulderR)
+	{
+		const float A = MeleeAge / 0.35f;
+		Body.ShoulderR->SetRelativeRotation(FRotator(FMath::Lerp(150.f, 25.f, A), 0.f, -20.f));
+	}
+}
+
+void AKaelCharacter::UpdateHeartAndBreath(float DeltaSeconds)
+{
+	const float LowHealth = FMath::Clamp((0.45f - Health->GetFraction()) / 0.45f, 0.f, 1.f);
+	const float Intensity = FMath::Max(Fear, LowHealth);
+	if (!bDead && Intensity > 0.3f)
+	{
+		HeartTimer -= DeltaSeconds;
+		if (HeartTimer <= 0.f)
+		{
+			HeartTimer = FMath::Lerp(1.05f, 0.38f, Intensity);
+			RupturaAssets::PlaySound2D(this, TEXT("batimento"), 0.25f + 0.6f * Intensity);
+		}
+	}
+	else
+	{
+		HeartTimer = 0.2f;
+	}
+
+	if (BreathLoop)
+	{
+		const float Breath = bDead ? 0.f : FMath::Clamp(FMath::Max((1.f - Stamina) * 1.1f - 0.1f, Fear * 0.55f), 0.f, 1.f);
+		BreathLoop->SetVolumeMultiplier(FMath::Max(0.01f, Breath * 0.8f));
+		BreathLoop->SetPitchMultiplier(1.f + 0.15f * Fear);
+	}
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -991,16 +1241,14 @@ void AKaelCharacter::HandleHealthChanged(UHealthComponent* Component, float NewH
 		return;
 	}
 	const float Now = GetWorld()->GetTimeSeconds();
-	AddTrauma(FMath::Clamp(-Delta / 30.f, 0.15f, 0.6f));
-	DamageFlash = FMath::Min(1.f, DamageFlash + 0.45f - Delta / 50.f);
+	AddTrauma(FMath::Clamp(-Delta / 30.f, 0.2f, 0.7f));
+	AddFear(0.25f);
+	DamageFlash = FMath::Min(1.f, DamageFlash + 0.5f - Delta / 40.f);
 	LastDamageTime = Now;
-	if (InstigatorActor)
-	{
-		LastDamageSource = InstigatorActor->GetActorLocation();
-	}
-	StaggerUntil = Now + 0.25f;
+	StaggerUntil = Now + 0.35f;
 	Body.Kick += 0.6f;
-	RupturaAssets::PlaySound2D(this, TEXT("dano"), 0.8f, FMath::FRandRange(0.9f, 1.1f));
+	Weapon->CancelReload(); // o golpe atrapalha a recarga
+	RupturaAssets::PlaySound2D(this, TEXT("dano"), 0.9f, FMath::FRandRange(0.9f, 1.1f));
 }
 
 void AKaelCharacter::HandleDeath(UHealthComponent* Component, AActor* Killer)
@@ -1011,9 +1259,17 @@ void AKaelCharacter::HandleDeath(UHealthComponent* Component, AActor* Killer)
 	}
 	bDead = true;
 	DeathTime = GetWorld()->GetTimeSeconds();
-	ExitCover();
 	SetInputLocked(true);
 	GetCharacterMovement()->DisableMovement();
+	if (bFirstPerson)
+	{
+		SetFirstPerson(false); // mostra o corpo caindo
+	}
+	if (BreathLoop)
+	{
+		BreathLoop->FadeOut(1.f, 0.f);
+	}
+	RupturaAssets::PlaySound2D(this, TEXT("morte_kael"), 1.f);
 
 	if (URupturaGameInstance* GI = URupturaGameInstance::Get(this))
 	{

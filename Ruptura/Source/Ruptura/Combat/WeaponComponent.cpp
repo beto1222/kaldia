@@ -40,61 +40,28 @@ void UWeaponComponent::InitPlayerLoadout()
 	Weapons.Reset();
 	Ammo.Reset();
 
+	// Munição é escassa: cada tiro conta e o estampido atrai os infectados.
 	FWeaponDef Pistol;
-	Pistol.DisplayName = FText::FromString(TEXT("PISTOLA M9-R"));
-	Pistol.Damage = 24.f; Pistol.FireInterval = 0.2f; Pistol.MagSize = 12; Pistol.MaxReserve = 84;
-	Pistol.HipSpreadDeg = 2.0f; Pistol.AimSpreadDeg = 0.45f; Pistol.BloomPerShot = 0.7f; Pistol.MaxBloom = 2.5f;
-	Pistol.RecoilPitch = 1.6f; Pistol.RecoilYaw = 0.5f; Pistol.Range = 6000.f; Pistol.bAutomatic = false;
-	Pistol.ReloadTime = 1.3f; Pistol.GunLength = 32.f; Pistol.FireSound = TEXT("tiro_pistola"); Pistol.Loudness = 0.8f;
-	Pistol.TracerColor = FLinearColor(1.f, 0.8f, 0.45f);
+	Pistol.DisplayName = FText::FromString(TEXT("PISTOLA 9 MM"));
+	Pistol.Damage = 30.f; Pistol.FireInterval = 0.22f; Pistol.MagSize = 12; Pistol.MaxReserve = 48;
+	Pistol.HipSpreadDeg = 2.2f; Pistol.AimSpreadDeg = 0.5f; Pistol.BloomPerShot = 0.8f; Pistol.MaxBloom = 2.5f;
+	Pistol.RecoilPitch = 1.8f; Pistol.RecoilYaw = 0.6f; Pistol.Range = 6000.f; Pistol.bAutomatic = false;
+	Pistol.ReloadTime = 1.6f; Pistol.GunLength = 32.f; Pistol.FireSound = TEXT("tiro_pistola"); Pistol.Loudness = 1.f;
 	Weapons.Add(Pistol);
-	Ammo.Add(MakeAmmo(12, 48));
+	Ammo.Add(MakeAmmo(12, 12));
 
-	FWeaponDef Rifle;
-	Rifle.DisplayName = FText::FromString(TEXT("RIFLE DE ASSALTO AR-7"));
-	Rifle.Damage = 17.f; Rifle.FireInterval = 0.095f; Rifle.MagSize = 30; Rifle.MaxReserve = 210;
-	Rifle.HipSpreadDeg = 3.0f; Rifle.AimSpreadDeg = 0.8f; Rifle.BloomPerShot = 0.35f; Rifle.MaxBloom = 3.5f;
-	Rifle.RecoilPitch = 0.7f; Rifle.RecoilYaw = 0.35f; Rifle.Range = 9000.f; Rifle.bAutomatic = true;
-	Rifle.ReloadTime = 2.0f; Rifle.GunLength = 66.f; Rifle.FireSound = TEXT("tiro_rifle"); Rifle.Loudness = 1.f;
-	Rifle.TracerColor = FLinearColor(1.f, 0.7f, 0.3f);
-	Weapons.Add(Rifle);
-	Ammo.Add(MakeAmmo(30, 90));
+	FWeaponDef Shotgun;
+	Shotgun.DisplayName = FText::FromString(TEXT("ESPINGARDA CAL. 12"));
+	Shotgun.Damage = 13.f; Shotgun.Pellets = 9; Shotgun.PelletSpreadDeg = 4.5f;
+	Shotgun.FireInterval = 0.95f; Shotgun.MagSize = 5; Shotgun.MaxReserve = 15;
+	Shotgun.HipSpreadDeg = 1.5f; Shotgun.AimSpreadDeg = 0.5f; Shotgun.BloomPerShot = 0.f; Shotgun.MaxBloom = 0.f;
+	Shotgun.RecoilPitch = 5.5f; Shotgun.RecoilYaw = 1.2f; Shotgun.Range = 2600.f; Shotgun.bAutomatic = false;
+	Shotgun.ReloadTime = 3.f; Shotgun.GunLength = 78.f; Shotgun.FireSound = TEXT("tiro_espingarda"); Shotgun.Loudness = 1.f;
+	Weapons.Add(Shotgun);
+	Ammo.Add(MakeAmmo(3, 2));
 
-	Current = 1;
+	Current = 0;
 	bInfiniteReserve = false;
-}
-
-void UWeaponComponent::InitEnemyLoadout(float Damage, float FireInterval)
-{
-	Weapons.Reset();
-	Ammo.Reset();
-
-	FWeaponDef Rifle;
-	Rifle.DisplayName = FText::FromString(TEXT("RIFLE HOSTIL"));
-	Rifle.Damage = Damage; Rifle.FireInterval = FireInterval; Rifle.MagSize = 24; Rifle.MaxReserve = 999;
-	Rifle.HipSpreadDeg = 0.f; Rifle.AimSpreadDeg = 0.f; Rifle.BloomPerShot = 0.f; Rifle.MaxBloom = 0.f;
-	Rifle.Range = 6000.f; Rifle.bAutomatic = true; Rifle.ReloadTime = 2.2f; Rifle.GunLength = 60.f;
-	Rifle.FireSound = TEXT("tiro_inimigo"); Rifle.Loudness = 1.f; Rifle.TracerColor = FLinearColor(1.f, 0.25f, 0.15f);
-	Weapons.Add(Rifle);
-	Ammo.Add(MakeAmmo(24, 999));
-	Current = 0;
-	bInfiniteReserve = true;
-}
-
-void UWeaponComponent::InitBossLoadout(float Damage, float FireInterval)
-{
-	Weapons.Reset();
-	Ammo.Reset();
-
-	FWeaponDef Minigun;
-	Minigun.DisplayName = FText::FromString(TEXT("METRALHADORA ROTATIVA"));
-	Minigun.Damage = Damage; Minigun.FireInterval = FireInterval; Minigun.MagSize = 90; Minigun.MaxReserve = 999;
-	Minigun.Range = 7000.f; Minigun.bAutomatic = true; Minigun.ReloadTime = 2.6f; Minigun.GunLength = 90.f;
-	Minigun.FireSound = TEXT("tiro_robo"); Minigun.Loudness = 1.f; Minigun.TracerColor = FLinearColor(1.f, 0.15f, 0.1f);
-	Weapons.Add(Minigun);
-	Ammo.Add(MakeAmmo(90, 999));
-	Current = 0;
-	bInfiniteReserve = true;
 }
 
 const FWeaponDef& UWeaponComponent::GetDef() const
@@ -146,17 +113,66 @@ bool UWeaponComponent::AreAllies(const AActor* A, const AActor* B)
 	return A && B && A->IsA<AEnemyCharacter>() && B->IsA<AEnemyCharacter>();
 }
 
+void UWeaponComponent::FireProjectile(const FWeaponDef& Def, const FVector& AimStart, const FVector& Dir, const FVector& Muzzle, FShotResult& OutResult, bool bEffects)
+{
+	UWorld* World = GetWorld();
+	AActor* OwnerActor = GetOwner();
+
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(RupturaShot), false, OwnerActor);
+	Query.bReturnPhysicalMaterial = false;
+
+	// 1) Onde a mira encosta no mundo.
+	const FVector AimEnd = AimStart + Dir * Def.Range;
+	FHitResult AimHit;
+	const FVector AimPoint = World->LineTraceSingleByChannel(AimHit, AimStart, AimEnd, ECC_Pawn, Query) ? AimHit.ImpactPoint : AimEnd;
+
+	// 2) Projétil real saindo do cano: obstáculos na frente da arma bloqueiam.
+	const FVector ShotDir = (AimPoint - Muzzle).GetSafeNormal();
+	const FVector ShotEnd = AimPoint + ShotDir * 25.f;
+	FHitResult Hit;
+	const bool bHit = World->LineTraceSingleByChannel(Hit, Muzzle, ShotEnd, ECC_Pawn, Query);
+	OutResult.bHit |= bHit;
+	OutResult.End = bHit ? Hit.ImpactPoint : ShotEnd;
+	if (!bHit || !Hit.GetActor())
+	{
+		return;
+	}
+
+	APawn* OwnerPawn = Cast<APawn>(OwnerActor);
+	AController* InstigatorController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
+
+	AActor* Target = Hit.GetActor();
+	OutResult.HitActor = Target;
+	UHealthComponent* TargetHealth = Target->FindComponentByClass<UHealthComponent>();
+	const bool bFleshHit = Target->IsA<APawn>() && TargetHealth && !TargetHealth->IsDead();
+	OutResult.bHitPawn |= bFleshHit;
+
+	if (!AreAllies(OwnerActor, Target))
+	{
+		float Damage = Def.Damage;
+		if (const AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Target))
+		{
+			const float Mult = Enemy->GetDamageMultiplierForHit(Hit, ShotDir);
+			OutResult.bHeadshot |= Mult > 1.9f && !Enemy->IsBoss();
+			Damage *= Mult;
+		}
+		const bool bWasAlive = TargetHealth && !TargetHealth->IsDead();
+		UGameplayStatics::ApplyPointDamage(Target, Damage, ShotDir, Hit, InstigatorController, OwnerActor, UDamageType::StaticClass());
+		OutResult.bKilled |= bWasAlive && TargetHealth->IsDead();
+	}
+	if (bEffects)
+	{
+		RupturaFx::Impact(World, Hit.ImpactPoint, Hit.ImpactNormal, bFleshHit);
+		RupturaAssets::PlaySound3D(this, bFleshHit ? FName(TEXT("impacto_corpo")) : FName(TEXT("impacto")), Hit.ImpactPoint, 0.6f, FMath::FRandRange(0.9f, 1.15f));
+	}
+}
+
 bool UWeaponComponent::FireShot(const FVector& AimStart, const FVector& AimDir, const FVector& Muzzle, float SpreadDeg, FShotResult& OutResult)
 {
 	OutResult = FShotResult();
 	UWorld* World = GetWorld();
 	AActor* OwnerActor = GetOwner();
-	if (!World || !OwnerActor)
-	{
-		return false;
-	}
-
-	if (!Weapons.IsValidIndex(Current))
+	if (!World || !OwnerActor || !Weapons.IsValidIndex(Current))
 	{
 		return false;
 	}
@@ -182,57 +198,21 @@ bool UWeaponComponent::FireShot(const FVector& AimStart, const FVector& AimDir, 
 	--A.Mag;
 	Bloom = FMath::Min(Def.MaxBloom, Bloom + Def.BloomPerShot);
 
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(RupturaShot), false, OwnerActor);
-	Query.bReturnPhysicalMaterial = false;
-
-	const FVector Dir = FMath::VRandCone(AimDir.GetSafeNormal(), FMath::DegreesToRadians(FMath::Max(0.f, SpreadDeg)));
-	const FVector AimEnd = AimStart + Dir * Def.Range;
-
-	// 1) Onde a mira encosta no mundo.
-	FHitResult AimHit;
-	const FVector AimPoint = World->LineTraceSingleByChannel(AimHit, AimStart, AimEnd, ECC_Pawn, Query) ? AimHit.ImpactPoint : AimEnd;
-
-	// 2) Tiro real saindo do cano.
-	const FVector ShotDir = (AimPoint - Muzzle).GetSafeNormal();
-	const FVector ShotEnd = AimPoint + ShotDir * 25.f;
-	FHitResult Hit;
-	const bool bHit = World->LineTraceSingleByChannel(Hit, Muzzle, ShotEnd, ECC_Pawn, Query);
-	OutResult.bHit = bHit;
-	OutResult.End = bHit ? Hit.ImpactPoint : ShotEnd;
-
-	APawn* OwnerPawn = Cast<APawn>(OwnerActor);
-	AController* InstigatorController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
-
-	if (bHit && Hit.GetActor())
+	// A dispersão desvia o centro do disparo; os chumbos se abrem em volta desse centro.
+	const FVector Center = FMath::VRandCone(AimDir.GetSafeNormal(), FMath::DegreesToRadians(FMath::Max(0.f, SpreadDeg)));
+	const int32 Count = FMath::Max(1, Def.Pellets);
+	for (int32 i = 0; i < Count; ++i)
 	{
-		AActor* Target = Hit.GetActor();
-		OutResult.HitActor = Target;
-		UHealthComponent* TargetHealth = Target->FindComponentByClass<UHealthComponent>();
-		const bool bTargetIsPawn = Target->IsA<APawn>();
-		OutResult.bHitPawn = bTargetIsPawn && TargetHealth && !TargetHealth->IsDead();
-
-		if (!AreAllies(OwnerActor, Target))
-		{
-			float Damage = Def.Damage;
-			if (const AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Target))
-			{
-				const float Mult = Enemy->GetDamageMultiplierForHit(Hit, ShotDir);
-				OutResult.bHeadshot = Mult > 1.9f && !Enemy->IsBoss();
-				Damage *= Mult;
-			}
-			const bool bWasAlive = TargetHealth && !TargetHealth->IsDead();
-			UGameplayStatics::ApplyPointDamage(Target, Damage, ShotDir, Hit, InstigatorController, OwnerActor, UDamageType::StaticClass());
-			OutResult.bKilled = bWasAlive && TargetHealth->IsDead();
-		}
-		RupturaFx::Impact(World, Hit.ImpactPoint, Hit.ImpactNormal, OutResult.bHitPawn);
-		RupturaAssets::PlaySound3D(this, OutResult.bHitPawn ? FName(TEXT("impacto_corpo")) : FName(TEXT("impacto")), Hit.ImpactPoint, 0.6f, FMath::FRandRange(0.9f, 1.15f));
+		const FVector Dir = Count > 1 ? FMath::VRandCone(Center, FMath::DegreesToRadians(Def.PelletSpreadDeg)) : Center;
+		// Efeitos só nos primeiros chumbos: o resultado visual é o mesmo e poupa centenas de atores.
+		FireProjectile(Def, AimStart, Dir, Muzzle, OutResult, i < 4);
 	}
 
-	RupturaFx::Tracer(World, Muzzle + ShotDir * 20.f, OutResult.End, Def.TracerColor);
-	RupturaFx::MuzzleFlash(World, Muzzle, ShotDir.Rotation(), FLinearColor(1.f, 0.7f, 0.3f), Def.GunLength > 80.f ? 1.4f : 1.f);
+	// Sem traçantes (munição comum não brilha): só o clarão do cano, que ilumina o escuro por um instante.
+	RupturaFx::MuzzleFlash(World, Muzzle, Center.Rotation(), FLinearColor(1.f, 0.68f, 0.32f), Count > 1 ? 1.6f : 1.f);
 	RupturaAssets::PlaySound3D(this, Def.FireSound, Muzzle, 1.f, FMath::FRandRange(0.95f, 1.05f));
 
-	// Ruído para a percepção auditiva da IA.
+	// Estampido para a audição da IA: tiros atraem os infectados de longe.
 	UAISense_Hearing::ReportNoiseEvent(World, Muzzle, Def.Loudness, OwnerActor, 0.f, TEXT("Tiro"));
 
 	if (A.Mag <= 0)

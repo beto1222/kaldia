@@ -10,8 +10,8 @@ class UInputAction;
 class UInputMappingContext;
 
 /**
- * Controla cenas cinematográficas curtas (abertura e apresentação do chefe), telas de fim,
- * reinício por checkpoint, qualidade gráfica (F5–F8) e dificuldade (F1–F3).
+ * Controla cenas cinematográficas curtas (abertura e aparição do Hospedeiro), telas de fim,
+ * reinício por checkpoint, tela de estado (Tab), qualidade gráfica (F5–F8) e dificuldade (F1–F3).
  */
 UCLASS()
 class RUPTURA_API AKaelPlayerController : public APlayerController
@@ -43,6 +43,8 @@ public:
 	void ShowToast(const FText& Text, float Duration = 2.5f);
 	bool GetToast(FText& OutText, float& OutAlpha) const;
 	bool IsHelpVisible() const;
+	/** Tab segurado: mostra estado, inventário, objetivo e a direção dele. */
+	bool IsStatusHeld() const { return bStatusHeld; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -51,6 +53,8 @@ protected:
 	void BuildInput();
 	void Input_Skip();
 	void Input_Help();
+	void Input_StatusStart();
+	void Input_StatusStop();
 	void Input_Restart();
 	void Input_QualityLow();
 	void Input_QualityMedium();
@@ -69,6 +73,7 @@ protected:
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> Mapping;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Skip;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Help;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Status;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Restart;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Q0;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> IA_Q1;
@@ -99,6 +104,7 @@ protected:
 	float ToastDuration = 0.f;
 
 	bool bHelpToggled = false;
+	bool bStatusHeld = false;
 	float HelpAutoUntil = 0.f;
 
 	FTimerHandle ReloadTimer;

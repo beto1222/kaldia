@@ -1,13 +1,15 @@
 ﻿#include "AI/EnemyCharacter.h"
 #include "AI/EnemyAIController.h"
 #include "Combat/HealthComponent.h"
-#include "Combat/WeaponComponent.h"
 #include "Mission/MissionDirector.h"
 #include "Mission/Pickup.h"
 #include "Core/RupturaAssets.h"
 #include "Core/RupturaGameInstance.h"
+#include "Core/FxActor.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/DamageType.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 
 AEnemyCharacter::AEnemyCharacter()
@@ -20,13 +22,11 @@ AEnemyCharacter::AEnemyCharacter()
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	Move->bOrientRotationToMovement = true;
 	Move->bUseControllerDesiredRotation = false;
-	Move->RotationRate = FRotator(0.f, 540.f, 0.f);
-	Move->MaxWalkSpeed = 200.f;
-	Move->MaxWalkSpeedCrouched = 180.f;
-	Move->GetNavAgentPropertiesRef().bCanCrouch = true;
-	Move->SetCrouchedHalfHeight(58.f);
+	Move->RotationRate = FRotator(0.f, 420.f, 0.f);
+	Move->MaxWalkSpeed = 110.f;
+	Move->BrakingDecelerationWalking = 900.f;
 	Move->bUseRVOAvoidance = true;
-	Move->AvoidanceConsiderationRadius = 300.f;
+	Move->AvoidanceConsiderationRadius = 250.f;
 
 	AIControllerClass = AEnemyAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
@@ -36,13 +36,18 @@ AEnemyCharacter::AEnemyCharacter()
 	BodyRoot->SetRelativeLocation(FVector(0.f, 0.f, -92.f));
 
 	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
-	Weapon = CreateDefaultSubobject<UWeaponComponent>(TEXT("Weapon"));
 }
 
-void AEnemyCharacter::Setup(FName InGroup, const TArray<FVector>& InPatrolPoints, bool bInElite)
+float AEnemyCharacter::Now() const
+{
+	return GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+}
+
+void AEnemyCharacter::Setup(FName InGroup, const TArray<FVector>& InPatrolPoints, bool bInElite, bool bInDormant)
 {
 	Group = InGroup;
 	PatrolPoints = InPatrolPoints;
+	bDormant = bInDormant;
 	if (bElite != bInElite)
 	{
 		bElite = bInElite;
@@ -72,23 +77,19 @@ void AEnemyCharacter::BeginPlay()
 
 	BuildBody();
 	bBodyBuilt = true;
+	NextVoice = Now() + FMath::FRandRange(1.f, 8.f);
 }
 
 void AEnemyCharacter::BuildBody()
 {
-	FSoldierColors Colors;
-	Colors.Armor = bElite ? FLinearColor(0.18f, 0.03f, 0.02f) : FLinearColor(0.035f, 0.035f, 0.04f);
-	Colors.Suit = FLinearColor(0.12f, 0.06f, 0.05f);
-	Colors.Visor = bElite ? FLinearColor(1.f, 0.45f, 0.05f) : FLinearColor(1.f, 0.08f, 0.05f);
-	Colors.VisorGlow = 12.f;
-	SoldierBody::Build(this, BodyRoot, Colors, bElite ? 1.05f : 1.f, Body);
-	SoldierBody::SetGunLength(Body, 60.f);
+	FRandomStream Rng(FMath::Rand());
+	const FInfectedLook Look = InfectedBody::RandomLook(Rng, bElite);
+	InfectedBody::Build(this, BodyRoot, Look, bElite ? 1.12f : FMath::FRandRange(0.94f, 1.04f), Flesh);
 }
 
 void AEnemyCharacter::ApplyDifficulty(ERupturaDifficulty Difficulty)
 {
 	Tuning = FRupturaTuning::ForDifficulty(Difficulty, bElite);
-	Weapon->InitEnemyLoadout(Tuning.ShotDamage, Tuning.FireInterval);
 
 	if (HasActorBegunPlay() && !Health->IsDead())
 	{
@@ -100,11 +101,20 @@ void AEnemyCharacter::ApplyDifficulty(ERupturaDifficulty Difficulty)
 
 float AEnemyCharacter::GetDamageMultiplierForHit(const FHitResult& Hit, const FVector& ShotDir) const
 {
-	const float Top = GetActorLocation().Z + GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const bool bHead = Hit.ImpactPoint.Z > Top - 28.f;
-	if (bHead)
+	if (bDormant || IsRising())
 	{
-		return bElite ? 2.f : 2.5f;
+		return 1.5f; // caído no chão: o corpo todo fica exposto
+	}
+	const float Half = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float Top = GetActorLocation().Z + Half;
+	const float Z = Hit.ImpactPoint.Z;
+	if (Z > Top - 34.f)
+	{
+		return bElite ? 2.2f : 3.f; // tiro na cabeça
+	}
+	if (Z < Top - Half * 2.f * 0.55f)
+	{
+		return 0.75f; // pernas
 	}
 	return 1.f;
 }
@@ -112,6 +122,31 @@ float AEnemyCharacter::GetDamageMultiplierForHit(const FHitResult& Hit, const FV
 bool AEnemyCharacter::IsDead() const
 {
 	return bDeadFlag || (Health && Health->IsDead());
+}
+
+bool AEnemyCharacter::IsRising() const
+{
+	return Now() - WakeTime < RiseDuration;
+}
+
+bool AEnemyCharacter::IsActive() const
+{
+	return !bDormant && !IsRising() && !IsDead();
+}
+
+bool AEnemyCharacter::IsAttacking() const
+{
+	return Now() - AttackStart < AttackDuration;
+}
+
+bool AEnemyCharacter::IsStaggered() const
+{
+	return Now() < StaggerUntil;
+}
+
+bool AEnemyCharacter::CanAttack() const
+{
+	return IsActive() && Now() >= NextAttackTime && !IsAttacking() && !IsStaggered();
 }
 
 EEnemyAlert AEnemyCharacter::GetAlert() const
@@ -142,35 +177,6 @@ FVector AEnemyCharacter::GetEyeLocationStanding() const
 	return FVector(GetActorLocation().X, GetActorLocation().Y, Feet + StandingHalfHeight * 2.f * 0.87f);
 }
 
-FVector AEnemyCharacter::GetMuzzleLocation() const
-{
-	return Body.Muzzle ? Body.Muzzle->GetComponentLocation() : GetActorLocation() + GetActorForwardVector() * 60.f + FVector(0.f, 0.f, 40.f);
-}
-
-bool AEnemyCharacter::FireAt(const FVector& Target, float ExtraSpreadDeg)
-{
-	if (IsDead() || bIsCrouched)
-	{
-		return false;
-	}
-	const FVector Eye = GetEyeLocationStanding();
-	const FVector Dir = (Target - Eye).GetSafeNormal();
-
-	// Só atira se estiver mais ou menos virado para o alvo.
-	if (FVector::DotProduct(GetActorForwardVector().GetSafeNormal2D(), Dir.GetSafeNormal2D()) < 0.7f)
-	{
-		return false;
-	}
-
-	FShotResult Result;
-	const bool bFired = Weapon->FireShot(Eye, Dir, GetMuzzleLocation(), Tuning.SpreadDeg + ExtraSpreadDeg, Result);
-	if (bFired)
-	{
-		Body.Kick = 1.f;
-	}
-	return bFired;
-}
-
 void AEnemyCharacter::SetCombatStance(bool bCombat)
 {
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -183,6 +189,135 @@ void AEnemyCharacter::SetMoveSpeed(float Speed)
 	GetCharacterMovement()->MaxWalkSpeed = Speed;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Golpe corpo a corpo
+// ---------------------------------------------------------------------------------------------
+
+bool AEnemyCharacter::StartMeleeAttack(AActor* Target)
+{
+	if (!Target || !CanAttack())
+	{
+		return false;
+	}
+	AttackTarget = Target;
+	AttackStart = Now();
+	AttackDuration = Tuning.AttackWindup + 0.6f;
+	NextAttackTime = AttackStart + Tuning.AttackInterval;
+	bAttackResolved = false;
+
+	const FVector To = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+	if (!To.IsNearlyZero())
+	{
+		SetActorRotation(FRotator(0.f, To.Rotation().Yaw, 0.f));
+	}
+	RupturaAssets::PlaySound3D(this, TEXT("infectado_ataque"), GetActorLocation() + FVector(0.f, 0.f, 70.f), 1.f, FMath::FRandRange(0.9f, 1.1f) * (bElite ? 0.85f : 1.f));
+	return true;
+}
+
+void AEnemyCharacter::UpdateMelee(float DeltaSeconds)
+{
+	if (bAttackResolved || Now() - AttackStart < Tuning.AttackWindup)
+	{
+		return;
+	}
+	bAttackResolved = true;
+
+	AActor* Target = AttackTarget.Get();
+	if (!Target || IsDead())
+	{
+		return;
+	}
+
+	// Bote para frente no momento do golpe.
+	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+	LaunchCharacter(Forward * 380.f, true, false);
+
+	const FVector Delta = Target->GetActorLocation() - GetActorLocation();
+	const float Dot = FVector::DotProduct(Forward, Delta.GetSafeNormal2D());
+	if (Delta.Size2D() <= AttackRange + 60.f && Dot > 0.35f && FMath::Abs(Delta.Z) < 120.f)
+	{
+		UGameplayStatics::ApplyDamage(Target, Tuning.MeleeDamage, GetController(), this, UDamageType::StaticClass());
+		RupturaFx::Blood(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 40.f), -Delta.GetSafeNormal(), 5);
+		RupturaAssets::PlaySound3D(this, TEXT("infectado_mordida"), Target->GetActorLocation(), 1.f, FMath::FRandRange(0.9f, 1.1f));
+	}
+}
+
+void AEnemyCharacter::Shove(const FVector& Direction, float Strength)
+{
+	if (IsDead())
+	{
+		return;
+	}
+	LaunchCharacter(Direction.GetSafeNormal2D() * Strength + FVector(0.f, 0.f, 60.f), true, false);
+	StaggerUntil = FMath::Max(StaggerUntil, Now() + 0.8f);
+	if (!bAttackResolved)
+	{
+		bAttackResolved = true;
+		AttackStart = -10.f; // golpe interrompido
+	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Dormente: parece um cadáver até o jogador chegar perto
+// ---------------------------------------------------------------------------------------------
+
+void AEnemyCharacter::Wake()
+{
+	if (!bDormant || IsDead())
+	{
+		return;
+	}
+	bDormant = false;
+	WakeTime = Now();
+	bWakeAlertSent = false;
+	RupturaAssets::PlaySound3D(this, TEXT("infectado_levantar"), GetActorLocation(), 1.f, FMath::FRandRange(0.9f, 1.1f));
+}
+
+void AEnemyCharacter::UpdateDormant(float DeltaSeconds)
+{
+	if (bDormant)
+	{
+		const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
+		if (Player && FVector::Dist(Player->GetActorLocation(), GetActorLocation()) < WakeRadius)
+		{
+			Wake();
+		}
+		return;
+	}
+	if (!bWakeAlertSent && !IsRising())
+	{
+		bWakeAlertSent = true;
+		if (AEnemyAIController* AI = Cast<AEnemyAIController>(GetController()))
+		{
+			if (const APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0))
+			{
+				AI->AlertTo(Player->GetActorLocation(), true);
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Voz: gemidos ao vagar, rosnados ofegantes ao perseguir
+// ---------------------------------------------------------------------------------------------
+
+void AEnemyCharacter::UpdateVoice(float DeltaSeconds)
+{
+	if (bDormant || Now() < NextVoice)
+	{
+		return;
+	}
+	const bool bChasing = GetAlert() == EEnemyAlert::Combate;
+	NextVoice = Now() + (bChasing ? FMath::FRandRange(1.8f, 3.8f) : FMath::FRandRange(5.f, 12.f));
+	const FVector Mouth = GetActorLocation() + FVector(0.f, 0.f, 70.f);
+	const float Pitch = FMath::FRandRange(0.85f, 1.15f) * (bElite ? 0.75f : 1.f);
+	RupturaAssets::PlaySound3D(this, bChasing ? FName(TEXT("infectado_rosnado")) : FName(TEXT("infectado_gemido")), Mouth, bChasing ? 0.9f : 0.6f, Pitch);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Dano e morte
+// ---------------------------------------------------------------------------------------------
+
 void AEnemyCharacter::HandleHealthChanged(UHealthComponent* Component, float NewHealth, float Delta, AActor* InstigatorActor)
 {
 	if (Delta < 0.f)
@@ -193,8 +328,31 @@ void AEnemyCharacter::HandleHealthChanged(UHealthComponent* Component, float New
 
 void AEnemyCharacter::OnDamaged(float Amount, AActor* InstigatorActor)
 {
-	FlinchTime = GetWorld()->GetTimeSeconds();
-	Body.Kick += 0.8f;
+	const float T = Now();
+	FlinchTime = T;
+
+	// Atordoamento: dano grande concentrado (tiro de pistola, rajada de chumbos) interrompe o golpe.
+	if (T - LastDamageAt > 0.15f)
+	{
+		RecentDamage = 0.f;
+	}
+	RecentDamage += Amount;
+	LastDamageAt = T;
+	if (RecentDamage >= 22.f * Tuning.StaggerResist)
+	{
+		RecentDamage = 0.f;
+		StaggerUntil = FMath::Max(StaggerUntil, T + 0.55f);
+		if (!bAttackResolved)
+		{
+			bAttackResolved = true;
+			AttackStart = -10.f;
+		}
+	}
+
+	if (bDormant)
+	{
+		Wake();
+	}
 	if (AEnemyAIController* AI = Cast<AEnemyAIController>(GetController()))
 	{
 		AI->NotifyDamaged(InstigatorActor);
@@ -207,8 +365,9 @@ void AEnemyCharacter::HandleDeath(UHealthComponent* Component, AActor* Killer)
 	{
 		return;
 	}
+	bDiedLying = bDormant || IsRising();
 	bDeadFlag = true;
-	DeathTime = GetWorld()->GetTimeSeconds();
+	DeathTime = Now();
 	OnDied(Killer);
 }
 
@@ -232,64 +391,110 @@ void AEnemyCharacter::OnDied(AActor* Killer)
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DetachFromControllerPendingDestroy();
 
-	RupturaAssets::PlaySound3D(this, TEXT("morte_inimigo"), GetActorLocation(), 0.9f, FMath::FRandRange(0.9f, 1.1f));
+	RupturaAssets::PlaySound3D(this, TEXT("infectado_morte"), GetActorLocation() + FVector(0.f, 0.f, 60.f), 0.9f, FMath::FRandRange(0.9f, 1.1f));
+	RupturaFx::BloodPool(GetWorld(), GetActorLocation(), bElite ? 170.f : 120.f);
 
 	if (AMissionDirector* Director = AMissionDirector::Get(this))
 	{
 		Director->OnEnemyKilled(this, Killer);
 	}
 
-	// Chance de deixar munição para trás.
-	if (FMath::FRand() < 0.6f)
+	// Às vezes o infectado ainda carrega algo útil de quando era gente.
+	const float Roll = FMath::FRand();
+	if (Roll < 0.45f)
 	{
-		const FVector DropLoc = GetActorLocation() - FVector(0.f, 0.f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - 20.f);
+		const bool bBattery = Roll < 0.13f;
+		const FVector DropLoc = GetActorLocation() - FVector(0.f, 0.f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - 5.f);
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		if (APickup* Drop = GetWorld()->SpawnActor<APickup>(APickup::StaticClass(), DropLoc, FRotator::ZeroRotator, Params))
 		{
-			Drop->Configure(EPickupType::Municao, 30, 0.f);
-			Drop->SetLifeSpan(60.f);
+			Drop->Configure(bBattery ? EPickupType::Bateria : EPickupType::Municao, bBattery ? 25 : 6, 0.f);
+			Drop->SetLifeSpan(90.f);
 		}
 	}
 
-	SetLifeSpan(30.f);
+	SetLifeSpan(60.f);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Animação
+// ---------------------------------------------------------------------------------------------
 
 void AEnemyCharacter::AnimateBody(float DeltaSeconds)
 {
-	const float Now = GetWorld()->GetTimeSeconds();
+	const float T = Now();
 	const float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 
 	FRotator RootRot = FRotator::ZeroRotator;
-	float ScaleZ = HalfHeight / StandingHalfHeight;
+	FVector RootLoc(0.f, 0.f, -HalfHeight);
 
-	const float FlinchAge = Now - FlinchTime;
-	if (FlinchAge < 0.25f)
-	{
-		RootRot.Pitch = 8.f * (1.f - FlinchAge / 0.25f);
-	}
+	// Deitado de bruços (dormente), levantando aos trancos, ou caindo morto.
+	float Lying = 0.f;
 	if (bDeadFlag)
 	{
-		const float A = FMath::Clamp((Now - DeathTime) / 0.6f, 0.f, 1.f);
-		const float Ease = A * A;
-		RootRot.Pitch = -85.f * Ease * DeathFallDir.X;
-		RootRot.Roll = 85.f * Ease * DeathFallDir.Y;
-		ScaleZ = 1.f;
+		if (bDiedLying)
+		{
+			Lying = 1.f;
+		}
+		else
+		{
+			const float A = FMath::Clamp((T - DeathTime) / 0.6f, 0.f, 1.f);
+			const float Ease = A * A;
+			RootRot.Pitch = -85.f * Ease * DeathFallDir.X;
+			RootRot.Roll = 85.f * Ease * DeathFallDir.Y;
+		}
+	}
+	else if (bDormant)
+	{
+		Lying = 1.f;
+	}
+	else if (IsRising())
+	{
+		const float A = FMath::Clamp((T - WakeTime) / RiseDuration, 0.f, 1.f);
+		Lying = FMath::Clamp(1.f - FMath::SmoothStep(0.f, 1.f, A) + 0.07f * FMath::Sin(A * 40.f) * (1.f - A), 0.f, 1.f);
+	}
+	if (Lying > 0.f)
+	{
+		// O corpo deitado fica centrado na cápsula para que tiros nele acertem.
+		RootRot.Pitch = -86.f * Lying;
+		RootLoc.X = -90.f * Lying;
 	}
 
-	BodyRoot->SetRelativeLocation(FVector(0.f, 0.f, -HalfHeight));
+	BodyRoot->SetRelativeLocation(RootLoc);
 	BodyRoot->SetRelativeRotation(RootRot);
-	BodyRoot->SetRelativeScale3D(FVector(1.f, 1.f, ScaleZ));
 
-	const bool bCombat = GetAlert() == EEnemyAlert::Combate;
-	SoldierBody::Animate(Body, bDeadFlag ? 0.f : GetVelocity().Size2D(), DeltaSeconds, bCombat);
+	// Morto há mais de um segundo: o corpo fica imóvel.
+	if (bDeadFlag && T - DeathTime > 1.f)
+	{
+		return;
+	}
+
+	FInfectedPose Pose;
+	Pose.Speed = bDeadFlag ? 0.f : GetVelocity().Size2D();
+	Pose.bChasing = !bDeadFlag && (GetAlert() == EEnemyAlert::Combate || IsRising());
+	Pose.Attack = IsAttacking() ? FMath::Clamp((T - AttackStart) / AttackDuration, 0.f, 1.f) : -1.f;
+	const float FlinchAge = T - FlinchTime;
+	Pose.Flinch = (FlinchAge < 0.3f) ? 1.f - FlinchAge / 0.3f : 0.f;
+	if (IsStaggered())
+	{
+		Pose.Flinch = FMath::Max(Pose.Flinch, 0.6f);
+	}
+	InfectedBody::Animate(Flesh, Pose, DeltaSeconds);
 }
 
 void AEnemyCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (bBodyBuilt)
+	if (!bBodyBuilt)
 	{
-		AnimateBody(DeltaSeconds);
+		return;
 	}
+	if (!bDeadFlag)
+	{
+		UpdateDormant(DeltaSeconds);
+		UpdateMelee(DeltaSeconds);
+		UpdateVoice(DeltaSeconds);
+	}
+	AnimateBody(DeltaSeconds);
 }
