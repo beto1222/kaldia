@@ -433,7 +433,7 @@ void ACityBuilder::BuildStreet()
 	BuildCar(FVector(4100.f, -650.f, 0.f), 160.f, EMat::CarBlue, true);
 	BuildCar(FVector(4750.f, 250.f, 0.f), 75.f, EMat::CarRed, true);
 	// Um carro com a bateria morrendo: faróis falhando
-	AddLight(FVector(1550.f - 240.f, -560.f, 70.f), FLinearColor(0.9f, 0.88f, 0.75f), 400.f, 1300.f, 2, false);
+	AddLight(FVector(1550.f - 370.f, -560.f, 120.f), FLinearColor(0.9f, 0.88f, 0.75f), 30.f, 1300.f, 2, false);
 
 	// Barreiras de concreto (cobertura baixa)
 	const FVector Barriers[] = { FVector(1200.f, -150.f, 90.f), FVector(2600.f, 100.f, 0.f), FVector(3300.f, 700.f, 60.f), FVector(3900.f, -250.f, 120.f), FVector(4500.f, 650.f, 0.f) };
@@ -474,7 +474,7 @@ void ACityBuilder::BuildStreet()
 	BuildCar(FVector(3300.f, -820.f, 0.f), 8.f, EMat::CarWhite, false);
 	Box(EMat::CarRed, FVector(3300.f, -820.f, 70.f), FVector(446.f, 196.f, 14.f), FRotator(0.f, 8.f, 0.f));
 	Box(EMat::CarWhite, FVector(3260.f, -820.f, 160.f), FVector(300.f, 186.f, 120.f), FRotator(0.f, 8.f, 0.f));
-	AddLight(FVector(3300.f, -820.f, 250.f), FLinearColor(1.f, 0.08f, 0.05f), 260.f, 1000.f, 2, false);
+	AddLight(FVector(3300.f, -820.f, 300.f), FLinearColor(1.f, 0.08f, 0.05f), 200.f, 1000.f, 2, false);
 	// Barreira policial derrubada no começo da avenida.
 	for (int32 i = 0; i < 3; ++i)
 	{
