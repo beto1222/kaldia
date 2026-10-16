@@ -162,15 +162,42 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.NoToneMapping;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x020304);
-scene.fog = new THREE.FogExp2(0x090c11, 0.05);
-const hemi = new THREE.HemisphereLight(0x2a3550, 0x080808, 0.45);
+scene.background = new THREE.Color(0x000000);
+// Horizonte: brilho fraco da cidade refletido nas nuvens de chuva. A neblina tem a mesma cor do horizonte,
+// então prédios e vultos ao longe viram silhuetas escuras contra ela.
+const HORIZON = new THREE.Color().setRGB(0.0135, 0.0115, 0.0105, THREE.LinearSRGBColorSpace);
+scene.fog = new THREE.FogExp2(HORIZON.clone(), 0.046);
+const hemi = new THREE.HemisphereLight(0x2a3550, 0x080808, 0.4);
 scene.add(hemi);
 const moon = new THREE.DirectionalLight(0x6a7fb0, 0.2); moon.position.set(-20, 30, 10); scene.add(moon);
 
 const camera = new THREE.PerspectiveCamera(74, 1, 0.05, 160);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
+
+// Céu: gradiente escuro com nuvens que só aparecem de verdade nos relâmpagos
+function skyMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uHorizon: { value: HORIZON }, uT: { value: 0 }, uFlash: { value: 0 } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir=position; vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position=p.xyww; }',
+    fragmentShader: `uniform vec3 uHorizon; uniform float uT, uFlash; varying vec3 vDir;
+      float hs(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hs(i),hs(i+vec2(1,0)),f.x), mix(hs(i+vec2(0,1)),hs(i+vec2(1,1)),f.x), f.y); }
+      void main(){ vec3 d=normalize(vDir); float h=d.y;
+        vec2 q=d.xz/(max(h,0.)+0.18)*0.9+vec2(uT*0.012,uT*0.004);
+        float n=vn(q)*0.55+vn(q*2.1)*0.3+vn(q*4.3)*0.15;
+        vec3 col=mix(uHorizon, uHorizon*vec3(0.18,0.2,0.26), smoothstep(0.,0.55,h));
+        col*=0.65+0.7*n;
+        col=mix(col, uHorizon*0.5, smoothstep(0.,-0.25,h));
+        col+=uFlash*(0.04+0.5*n*n)*vec3(0.62,0.68,0.85)*smoothstep(-0.05,0.35,h);
+        gl_FragColor=vec4(col,1.); }`,
+    side: THREE.BackSide, depthWrite: false, fog: false,
+  });
+}
+const sky = new THREE.Mesh(new THREE.SphereGeometry(140, 32, 16), skyMaterial()); sky.renderOrder = -10; sky.frustumCulled = false; scene.add(sky);
+// O mesmo céu vira mapa de ambiente (reflexo no asfalto molhado, na lataria e nos vidros)
+{ const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial()));
+  const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(envScene, 0, 0.1, 100).texture; pm.dispose(); }
 
 // Lanterna presa à câmera, com feixe visível na neblina
 const FLASH_CD = 190; // queda 1,6: perto estoura menos, a 6 m ilumina como antes
@@ -236,11 +263,38 @@ function cyl(material, x, y, z, d, h, collide = true) {
 function blob(material, x, y, z, sx, sy, sz, yaw = 0) { push(material, unitSph, x, y, z, sx, sy, sz, yaw); }
 function wheel(x, y, z, yaw) { tmpE.set(0, -yaw * DEG, 90 * DEG, 'YXZ'); tmpQ.setFromEuler(tmpE); tmpM.compose(V(x, y, z), tmpQ, new THREE.Vector3(0.68, 0.26, 0.68)); const g = unitCyl.clone().applyMatrix4(tmpM); if (!buckets.has(M.rubber)) buckets.set(M.rubber, []); buckets.get(M.rubber).push(g); }
 
-const lights = []; // {light, base, mode, phase, dead, dieAt, x, z, lampMesh}
-function light(color, cd, x, y, z, dist, mode = 0) {
-  const l = new THREE.PointLight(color, cd, dist * S, 2); l.position.copy(V(x, y, z)); scene.add(l);
-  const e = { light: l, base: cd, mode, phase: rnd(0, 100), dead: false, dieAt: -1, lamp: null };
+// Luzes da fase. Cada uma é "virtual" (posição, cor, intensidade); a cada instante só as mais próximas
+// ocupam uma luz de verdade. Postes, refletor e a luz da guarita são focos para baixo com sombra.
+const lights = []; // {light:{position,intensity,color}, base, mode, phase, dead, dieAt, x, lamp, range, down}
+function light(color, cd, x, y, z, dist, mode = 0, down = false) {
+  const e = { light: { position: V(x, y, z), intensity: cd, color: new THREE.Color(color) }, base: cd, mode, phase: rnd(0, 100), dead: false, dieAt: -1, lamp: null, range: dist * S, down };
   lights.push(e); return e;
+}
+const SPOT_N = 3, POINT_N = 4, spotPool = [], pointPool = [];
+for (let i = 0; i < SPOT_N; i++) {
+  const l = new THREE.SpotLight(0xffffff, 0, 20, 68 * DEG, 0.7, 2);
+  l.castShadow = true; l.shadow.mapSize.set(1024, 1024); l.shadow.camera.near = 0.3; l.shadow.bias = -0.0006; l.shadow.normalBias = 0.03; l.shadow.autoUpdate = false;
+  scene.add(l, l.target); spotPool.push({ l, src: null });
+}
+for (let i = 0; i < POINT_N; i++) { const l = new THREE.PointLight(0xffffff, 0, 10, 2); scene.add(l); pointPool.push({ l, src: null }); }
+let poolT = 0, shadowTurn = 0;
+function lightScore(e) { if (e.dead || e.base <= 0) return -1; const d2 = e.light.position.distanceToSquared(camera.position); if (d2 > (e.range + 30) ** 2) return -1; return e.base / (d2 + 30); }
+function fillPool(pool, cands) {
+  const pick = cands.map(e => [e, lightScore(e) * (pool.some(p => p.src === e) ? 1.6 : 1)]).filter(a => a[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, pool.length).map(a => a[0]);
+  for (const p of pool) if (p.src && !pick.includes(p.src)) p.src = null;
+  for (const e of pick) if (!pool.some(p => p.src === e)) { const free = pool.find(p => !p.src); free.src = e; if (free.l.isSpotLight) free.l.shadow.needsUpdate = true; }
+}
+function updateLightPools(dt) {
+  poolT -= dt;
+  if (poolT <= 0) { poolT = 0.2; fillPool(spotPool, lights.filter(e => e.down)); fillPool(pointPool, lights.filter(e => !e.down)); }
+  for (const p of [...spotPool, ...pointPool]) {
+    const e = p.src, l = p.l;
+    if (!e) { l.intensity = 0; continue; }
+    l.intensity = e.dead ? 0 : e.light.intensity; l.color.copy(e.light.color); l.position.copy(e.light.position); l.distance = e.range;
+    if (l.isSpotLight) { l.target.position.set(l.position.x, l.position.y - 5, l.position.z); l.shadow.camera.far = e.range; }
+  }
+  // Sombras dos focos: uma por quadro, em rodízio (os objetos fixos não mudam; só os infectados andam)
+  const sp = spotPool[shadowTurn++ % SPOT_N]; if (sp.src) sp.l.shadow.needsUpdate = true;
 }
 function lampMesh(material, x, y, z, sx, sy, sz) { const m = new THREE.Mesh(unitBox, material); m.position.copy(V(x, y, z)); m.scale.set(sy * S, sz * S, sx * S); scene.add(m); return m; }
 
@@ -264,7 +318,7 @@ const lampSpec = { '-400_1': 1, '1000_-1': 1, '2400_1': 2, '3800_-1': 2 };
 for (let x = -400; x <= 4800; x += 1400) for (const sd of [1, -1]) {
   cyl(M.dark, x, sd * 1000, 350, 16, 700); box(M.dark, x, sd * 880, 690, 20, 260, 14, 0, 0, 0, false);
   const mode = lampSpec[`${x}_${sd}`];
-  if (mode) { const e = light(0xff9440, 650, x, sd * 760, 650, 1700, mode); e.lamp = lampMesh(M.emOrange, x, sd * 760, 680, 60, 40, 10); e.x = x; }
+  if (mode) { const e = light(0xff9440, 650, x, sd * 760, 650, 1700, mode, true); e.lamp = lampMesh(M.emOrange, x, sd * 760, 680, 60, 40, 10); e.x = x; }
   else box(M.dark, x, sd * 760, 680, 60, 40, 10, 0, 0, 0, false);
 }
 function car(x, y, yaw, paint, burned) {
@@ -300,7 +354,7 @@ const CFX = 5500, BDX = 8000;
 for (const sd of [1, -1]) {
   box(M.mil, CFX, sd * 1850, 200, 80, 2500, 400); box(M.mil, CFX, sd * 650, 250, 120, 120, 500);
   box(M.hazard, CFX - 62, sd * 650, 250, 4, 120, 60, 0, 0, 0, false);
-  light(0xff2414, 260, CFX - 100, sd * 650, 480, 2600, 3); lampMesh(M.emRed, CFX - 64, sd * 650, 480, 10, 40, 20);
+  light(0xff2414, 160, CFX - 100, sd * 650, 480, 2600, 3); lampMesh(M.emRed, CFX - 64, sd * 650, 480, 10, 40, 20);
 }
 box(M.metal, 5300, 200, 10, 350, 480, 15, 20, 0, 0, false);
 box(M.rust, 6200, 1800, 130, 600, 240, 260); box(M.teal, 6200, 1800, 390, 600, 240, 260, 4, 0, 0, false);
@@ -311,11 +365,11 @@ box(M.mil, 7100, 2100, 150, 620, 20, 300); box(M.mil, 6800, 1800, 150, 20, 600, 
 box(M.mil, 6900, 1500, 150, 200, 20, 300); box(M.mil, 7300, 1500, 150, 200, 20, 300); box(M.mil, 7100, 1500, 265, 200, 20, 70, 0, 0, 0, false);
 box(M.mil, 7100, 1800, 310, 640, 640, 20, 0, 0, 0, false); box(M.metal, 7100, 1950, 45, 160, 70, 90); box(M.dark, 6900, 2000, 90, 60, 160, 180);
 box(M.blood, 7100, 2088, 140, 160, 2, 120, 0, 0, 8, false); box(M.blood, 7050, 1800, 0.8, 220, 160, 1, 30, 0, 0, false);
-const guardLight = light(0xd9f2d9, 70, 7100, 1800, 270, 900, 2);
-for (const sd of [1, -1]) { box(M.mil, BDX, sd * 1675, 300, 100, 2850, 600); box(M.hazard, BDX - 55, sd * 225, 175, 10, 40, 350, 0, 0, 0, false); light(0xff1f0d, 220, BDX - 220, sd * 450, 450, 1500, 3); }
+const guardLight = light(0xd9f2d9, 70, 7100, 1800, 270, 900, 2, true);
+for (const sd of [1, -1]) { box(M.mil, BDX, sd * 1675, 300, 100, 2850, 600); box(M.hazard, BDX - 55, sd * 225, 175, 10, 40, 350, 0, 0, 0, false); light(0xff1f0d, 90, BDX - 220, sd * 450, 450, 1500, 3); }
 box(M.mil, BDX, 0, 475, 100, 500, 250, 0, 0, 0, false); box(M.blood, BDX - 52, 330, 130, 2, 110, 170, 0, 0, 0, false);
 box(M.dark, BDX, 0, 175, 30, 400, 350); // porta do bunker (fechada)
-light(0xe6f0ff, 600, 6300, 0, 650, 2600, 2); cyl(M.dark, 6300, 0, 330, 18, 660);
+light(0xe6f0ff, 600, 6260, 0, 640, 2600, 2, true); // refletor: à frente do poste, não dentro dele cyl(M.dark, 6300, 0, 330, 18, 660);
 for (const sd of [1, -1]) { const b = [5700, sd * 2750]; for (let i = 0; i < 4; i++) cyl(M.dark, b[0] + (i < 2 ? -120 : 120), b[1] + (i % 2 ? 120 : -120), 350, 20, 700); box(M.metal, b[0], b[1], 705, 320, 320, 20, 0, 0, 0, false); box(M.mil, b[0], b[1], 830, 260, 260, 220, 0, 0, 0, false); }
 // Limites laterais do pátio
 box(M.mil, 6750, 3100, 300, 2600, 100, 600); box(M.mil, 6750, -3100, 300, 2600, 100, 600);
@@ -944,11 +998,12 @@ function updateWorld(dt) {
     if (glob && l.mode !== 3) k *= noise1(t * 30 + l.phase) > 0 ? 1 : 0.04;
     l.light.intensity = l.base * k;
   }
+  updateLightPools(dt);
   // Relâmpago e trovão
   G.nextThunder -= dt;
   if (G.nextThunder <= 0) { G.nextThunder = frand(9, 24); G.lightning = 0; G.thunderAt = G.t + frand(0.6, 2.2); }
   G.lightning += dt; let fl = 0; if (G.lightning < 0.08) fl = 1; else if (G.lightning >= 0.16 && G.lightning < 0.4) fl = 0.8 * (1 - (G.lightning - 0.16) / 0.24);
-  moon.intensity = 0.2 + fl * 4; hemi.intensity = 0.45 + fl * 2.5;
+  moon.intensity = 0.2 + fl * 4; hemi.intensity = 0.4 + fl * 2.5; sky.material.uniforms.uFlash.value = fl; sky.material.uniforms.uT.value = G.t + (G.idle || 0);
   if (G.thunderAt > 0 && G.t >= G.thunderAt) { G.thunderAt = -1; SFX.thunder(frand(0.6, 0.9)); }
   // Sons atrás de você
   G.nextAmbient -= dt;
@@ -980,8 +1035,56 @@ function updateWorld(dt) {
 // a gradação de cor, a vinheta e o grão em espaço de tela. Antes, contraste e grão eram aplicados em
 // HDR e multiplicados pela exposição (até 4,2x), o que estourava luzes e enchia o escuro de ruído.
 // ============================================================================================
-const composer = new EffectComposer(renderer);
+// Alvo HDR com 4 amostras (antisserrilhamento) e textura de profundidade para os efeitos de volume
+const rtMain = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+rtMain.depthTexture = new THREE.DepthTexture(1, 1);
+const composer = new EffectComposer(renderer, rtMain);
 composer.addPass(new RenderPass(scene, camera));
+
+// Profundidade: oclusão ambiental (cantos, junções, pés dos objetos) e luz espalhada na neblina.
+// O halo de cada luz é a integral exata de 1/r² ao longo do raio da câmera até a superfície,
+// então uma parede na frente corta o halo e as luzes distantes aparecem como brilhos na chuva.
+const NL = 8;
+class DepthFXPass extends ShaderPass {
+  render(renderer, writeBuffer, readBuffer, dt, mask) { this.uniforms.tDepth.value = readBuffer.depthTexture; super.render(renderer, writeBuffer, readBuffer, dt, mask); }
+}
+const depthFX = new DepthFXPass({
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uProjInv: { value: new THREE.Matrix4() }, uProjY: { value: 1 }, uRes: { value: new THREE.Vector2(1, 1) },
+    uT: { value: 0 }, uNL: { value: 0 }, uLP: { value: Array.from({ length: NL }, () => new THREE.Vector3()) }, uLC: { value: Array.from({ length: NL }, () => new THREE.Vector3()) },
+    uScatter: { value: 4.5e-5 }, uFogD: { value: 0.046 }, uMaxD: { value: 70 }, uAO: { value: 0.55 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: `uniform sampler2D tDiffuse, tDepth; uniform mat4 uProjInv; uniform float uProjY, uT, uScatter, uFogD, uMaxD, uAO; uniform vec2 uRes;
+    uniform int uNL; uniform vec3 uLP[${NL}], uLC[${NL}]; varying vec2 vUv;
+    vec3 vpos(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=uProjInv*vec4(uv*2.-1.,d*2.-1.,1.); return p.xyz/p.w; }
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+    void main(){
+      vec3 col=texture2D(tDiffuse,vUv).rgb; float d0=texture2D(tDepth,vUv).x; bool sky=d0>=0.99999;
+      vec3 P=vpos(vUv); vec3 V=normalize(P); float D=sky?uMaxD:min(length(P),uMaxD);
+      if(!sky && uAO>0.){
+        vec2 px=1./uRes;
+        vec3 Pr=vpos(vUv+vec2(px.x,0.)), Pl=vpos(vUv-vec2(px.x,0.)), Pu=vpos(vUv+vec2(0.,px.y)), Pd=vpos(vUv-vec2(0.,px.y));
+        vec3 dx=abs(Pr.z-P.z)<abs(Pl.z-P.z)?Pr-P:P-Pl, dy=abs(Pu.z-P.z)<abs(Pd.z-P.z)?Pu-P:P-Pd;
+        vec3 N=normalize(cross(dx,dy));
+        const float R=0.5; float rpx=min(R*uProjY*0.5*uRes.y/max(-P.z,0.1), 90.);
+        float occ=0., a=hash(gl_FragCoord.xy)*6.2832;
+        for(int i=0;i<10;i++){ float f=(float(i)+0.5)/10.; a+=2.39996; vec2 suv=vUv+vec2(cos(a),sin(a))*rpx*sqrt(f)*px;
+          vec3 v=vpos(suv)-P; float vv=dot(v,v); occ+=max(0.,dot(N,v)*inversesqrt(vv+1e-4)-0.15)*max(0.,1.-vv/(R*R)); }
+        col*=1.-clamp(occ/10.*2.4,0.,1.)*uAO;
+      }
+      vec3 sc=vec3(0.);
+      for(int i=0;i<${NL};i++){ if(i>=uNL) break; vec3 L=uLP[i]; float s0=dot(L,V); float h=sqrt(max(dot(L,L)-s0*s0,0.0025));
+        float I=(atan((D-s0)/h)+atan(s0/h))/h; float T=exp(-pow(uFogD*clamp(s0,0.,D),2.)); sc+=uLC[i]*I*T; }
+      col+=sc*uScatter*(0.92+0.16*hash(vUv*uRes+uT));
+      gl_FragColor=vec4(col,1.); }`,
+});
+composer.addPass(depthFX);
+const _lv = new THREE.Vector3();
+function updateDepthFX() {
+  const u = depthFX.uniforms; u.uProjInv.value.copy(camera.projectionMatrixInverse); u.uProjY.value = camera.projectionMatrix.elements[5];
+  const list = lights.map(e => [e, e.dead ? 0 : e.light.intensity / (e.light.position.distanceToSquared(camera.position) + 20)]).filter(a => a[1] > 0.004).sort((a, b) => b[1] - a[1]).slice(0, NL);
+  u.uNL.value = list.length;
+  list.forEach(([e], i) => { u.uLP.value[i].copy(e.light.position).applyMatrix4(camera.matrixWorldInverse); _lv.set(e.light.color.r, e.light.color.g, e.light.color.b).multiplyScalar(e.light.intensity); u.uLC.value[i].copy(_lv); });
+}
 
 // Medidor de exposição: reduz a imagem HDR já renderizada a 64x36 (sem renderizar a cena de novo)
 class LumaPass extends Pass {
@@ -1154,7 +1257,7 @@ window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => { keys.clear(); P.firing = false; P.aiming = false; });
 canvas.addEventListener('wheel', e => { if (G.started && !P.dead) { P.weapon = 1 - P.weapon; P.reloading = false; } }, { passive: true });
 
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); grade.uniforms.uRes.value.set(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); grade.uniforms.uRes.value.set(w, h); depthFX.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
 // ============================================================================================
@@ -1176,6 +1279,7 @@ function frame(now) {
   updateWorld(dt);
   rain.update(dt, camera.position);
   updateExposure(dt); grade.uniforms.uExposure.value = EXP.cur;
+  sky.position.copy(camera.position); camera.updateMatrixWorld(); updateDepthFX(); depthFX.uniforms.uT.value = grade.uniforms.uT.value;
   const low = clamp((45 - P.hp) / 45, 0, 1);
   grade.uniforms.uT.value = (now % 10000) / 1000; grade.uniforms.uFear.value = P.fear; grade.uniforms.uLow.value = P.dead ? 1 : low; grade.uniforms.uDmg.value = P.dmgFlash;
   grade.uniforms.uDead.value = P.dead ? clamp((G.t - P.deathT) / 2.5, 0, 0.94) : 0;
