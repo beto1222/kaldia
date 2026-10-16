@@ -199,23 +199,40 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(140, 32, 16), skyMaterial())
 { const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial()));
   const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(envScene, 0, 0.1, 100).texture; pm.dispose(); }
 
-// Lanterna presa à câmera, com feixe visível na neblina
+// Lanterna: segue a câmera com um leve atraso de mão (o facho "arrasta" nas viradas rápidas), projeta um
+// padrão de lente (miolo quente, anel e borda difusa) e tem sombra. O feixe na chuva é calculado no
+// passe de profundidade usando essa mesma sombra e o mesmo padrão.
 const FLASH_CD = 190; // queda 1,6: perto estoura menos, a 6 m ilumina como antes
-const flash = new THREE.SpotLight(0xffeed1, FLASH_CD, 30, 27 * DEG, 0.55, 1.6);
-flash.castShadow = true; flash.shadow.mapSize.set(1024, 1024); flash.shadow.camera.near = 0.2; flash.shadow.bias = -0.0006;
-flash.position.set(0.16, -0.14, 0.05); camera.add(flash);
-const flashTarget = new THREE.Object3D(); flashTarget.position.set(0.02, -0.08, -10); camera.add(flashTarget); flash.target = flashTarget;
-const beam = (() => {
-  const len = 14, r = Math.tan(24 * DEG) * len;
-  const g = new THREE.ConeGeometry(r, len, 40, 1, true); g.translate(0, -len / 2, 0); g.rotateX(Math.PI / 2);
-  const m = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { uLen: { value: len }, uI: { value: 1 } },
-    vertexShader: 'varying vec3 vP; varying vec3 vN; varying vec3 vV; void main(){ vP=position; vec4 mv=modelViewMatrix*vec4(position,1.); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }',
-    fragmentShader: 'varying vec3 vP; varying vec3 vN; varying vec3 vV; uniform float uLen; uniform float uI; void main(){ float d=clamp(-vP.z/uLen,0.,1.); float e=pow(abs(dot(vN,vV)),2.); float a=smoothstep(0.02,0.25,d)*(1.-d)*(1.-d)*e*0.05*uI; gl_FragColor=vec4(vec3(1.,.93,.8)*a,1.); }',
-  });
-  const mesh = new THREE.Mesh(g, m); mesh.position.copy(flash.position); mesh.rotation.set(0.006, -0.014, 0); camera.add(mesh); return mesh;
+const flash = new THREE.SpotLight(0xffeed1, FLASH_CD, 30, 27 * DEG, 0.3, 1.6);
+flash.castShadow = true; flash.shadow.mapSize.set(1024, 1024); flash.shadow.camera.near = 0.2; flash.shadow.bias = -0.0006; flash.shadow.normalBias = 0.02;
+flash.map = (() => {
+  const n = 256, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d'), img = g.createImageData(n, n);
+  const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const blots = Array.from({ length: 18 }, () => [Math.random() * 0.8 - 0.4, Math.random() * 0.8 - 0.4, 0.02 + Math.random() * 0.05, 0.05 + Math.random() * 0.08]);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const u = (x + 0.5) / n * 2 - 1, v = (y + 0.5) / n * 2 - 1, r = Math.hypot(u, v), a = Math.atan2(v, u);
+    let k = 0.62 * Math.exp(-((r / 0.24) ** 2)) + 0.08 * Math.exp(-(((r - 0.4) / 0.06) ** 2)) + 0.4 * (1 - sm(0.42, 1, r)) - 0.035 * Math.exp(-(((r - 0.3) / 0.05) ** 2));
+    k *= 1 + 0.035 * Math.sin(a * 7 + 1.3) * sm(0.2, 0.6, r); // facetas do refletor
+    for (const [bx, by, br, bk] of blots) { const d = Math.hypot(u - bx, v - by); if (d < br) k *= 1 - bk * (1 - d / br); } // sujeira na lente
+    const val = Math.max(0, Math.min(255, Math.round(k / 0.98 * 255))), i = (y * n + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = val; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t;
 })();
+scene.add(flash, flash.target);
+const FLASH_OFF = new THREE.Vector3(0.16, -0.14, 0.05), FLASH_AIM = new THREE.Vector3(0, 0, -10).sub(FLASH_OFF).normalize();
+const flashRig = { q: new THREE.Quaternion(), snap: true };
+const _fv = new THREE.Vector3(), _fq = new THREE.Quaternion(), _fe = new THREE.Euler();
+function updateFlashRig(dt, t) {
+  camera.updateMatrixWorld();
+  if (flashRig.snap) { flashRig.q.copy(camera.quaternion); flashRig.snap = false; }
+  else flashRig.q.slerp(camera.quaternion, 1 - Math.exp(-dt * (P.aiming ? 24 : 12)));
+  // Mão: oscilação lenta e pequena, maior com medo e cansaço
+  const w = (0.25 + P.fear * 0.8 + (1 - P.stamina) * 0.6) * DEG;
+  _fq.setFromEuler(_fe.set(noise1(t * 0.7 + 3) * w, noise1(t * 0.6 + 9) * w, 0));
+  flash.position.copy(FLASH_OFF).applyQuaternion(camera.quaternion).add(camera.position);
+  _fv.copy(FLASH_AIM).applyQuaternion(_fq).applyQuaternion(flashRig.q);
+  flash.target.position.copy(flash.position).addScaledVector(_fv, 10); flash.target.updateMatrixWorld();
+}
 
 // ============================================================================================
 // Materiais (mesmas cores lineares do CityBuilder / InfectedBody)
@@ -866,7 +883,8 @@ function updatePlayer(dt) {
   if (isFlashOn()) { P.battery = Math.max(0, P.battery - dt / 420); if (P.battery <= 0) { P.flashOn = false; SFX.click(0.6); toast('A lanterna apagou. Sem bateria.', 3); } }
   let k = isFlashOn() ? lerp(0.3, 1, clamp(P.battery / 0.25, 0, 1)) : 0;
   if (k > 0) { const rate = (P.battery < 0.12 ? 0.6 : 0) + P.interference * 2.5; if (G.t >= P.flickerUntil && Math.random() < rate * dt) P.flickerUntil = G.t + frand(0.08, 0.5); if (G.t < P.flickerUntil) k *= Math.random() < 0.5 ? 0.03 : 0.5; }
-  flash.intensity = FLASH_CD * k; beam.material.uniforms.uI.value = k; beam.visible = k > 0.001;
+  k *= 1 + 0.03 * noise1(G.t * 2.1 + 7); // variação natural da lâmpada
+  flash.intensity = FLASH_CD * k;
   P.interference = Math.max(0, P.interference - dt * 0.4);
   // Pickups
   for (const p of G.pickups) {
@@ -1046,15 +1064,24 @@ composer.addPass(new RenderPass(scene, camera));
 // então uma parede na frente corta o halo e as luzes distantes aparecem como brilhos na chuva.
 const NL = 8;
 class DepthFXPass extends ShaderPass {
-  render(renderer, writeBuffer, readBuffer, dt, mask) { this.uniforms.tDepth.value = readBuffer.depthTexture; super.render(renderer, writeBuffer, readBuffer, dt, mask); }
+  render(renderer, writeBuffer, readBuffer, dt, mask) {
+    const u = this.uniforms; u.tDepth.value = readBuffer.depthTexture;
+    // A sombra da lanterna acabou de ser desenhada neste quadro: usa a matriz e o mapa atuais
+    u.uFShadow.value = flash.shadow.map ? flash.shadow.map.texture : null; u.uFMat.value.multiplyMatrices(flash.shadow.matrix, camera.matrixWorld);
+    if (!u.uFShadow.value) u.uFOn.value = 0;
+    super.render(renderer, writeBuffer, readBuffer, dt, mask);
+  }
 }
 const depthFX = new DepthFXPass({
   uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uProjInv: { value: new THREE.Matrix4() }, uProjY: { value: 1 }, uRes: { value: new THREE.Vector2(1, 1) },
     uT: { value: 0 }, uNL: { value: 0 }, uLP: { value: Array.from({ length: NL }, () => new THREE.Vector3()) }, uLC: { value: Array.from({ length: NL }, () => new THREE.Vector3()) },
-    uScatter: { value: 4.5e-5 }, uFogD: { value: 0.046 }, uMaxD: { value: 70 }, uAO: { value: 0.55 } },
+    uScatter: { value: 4.5e-5 }, uFogD: { value: 0.046 }, uMaxD: { value: 70 }, uAO: { value: 0.55 },
+    uFOn: { value: 0 }, uFPos: { value: new THREE.Vector3() }, uFDir: { value: new THREE.Vector3() }, uFCos: { value: new THREE.Vector2() }, uFCol: { value: new THREE.Vector3() },
+    uFMat: { value: new THREE.Matrix4() }, uFShadow: { value: null }, uFCookie: { value: flash.map }, uFScatter: { value: 2.8e-4 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-  fragmentShader: `uniform sampler2D tDiffuse, tDepth; uniform mat4 uProjInv; uniform float uProjY, uT, uScatter, uFogD, uMaxD, uAO; uniform vec2 uRes;
-    uniform int uNL; uniform vec3 uLP[${NL}], uLC[${NL}]; varying vec2 vUv;
+  fragmentShader: `#include <packing>
+    uniform sampler2D tDiffuse, tDepth, uFShadow, uFCookie; uniform mat4 uProjInv, uFMat; uniform float uProjY, uT, uScatter, uFogD, uMaxD, uAO, uFOn, uFScatter; uniform vec2 uRes, uFCos;
+    uniform vec3 uFPos, uFDir, uFCol; uniform int uNL; uniform vec3 uLP[${NL}], uLC[${NL}]; varying vec2 vUv;
     vec3 vpos(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=uProjInv*vec4(uv*2.-1.,d*2.-1.,1.); return p.xyz/p.w; }
     float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
     void main(){
@@ -1075,6 +1102,16 @@ const depthFX = new DepthFXPass({
       for(int i=0;i<${NL};i++){ if(i>=uNL) break; vec3 L=uLP[i]; float s0=dot(L,V); float h=sqrt(max(dot(L,L)-s0*s0,0.0025));
         float I=(atan((D-s0)/h)+atan(s0/h))/h; float T=exp(-pow(uFogD*clamp(s0,0.,D),2.)); sc+=uLC[i]*I*T; }
       col+=sc*uScatter*(0.92+0.16*hash(vUv*uRes+uT));
+      // Feixe da lanterna: marcha de 14 passos pelo raio, com a sombra e o padrão da própria lanterna
+      if(uFOn>0.){
+        float tEnd=min(D,24.), j=hash(gl_FragCoord.xy+fract(uT)*61.), st=(tEnd-0.35)/14., acc=0.;
+        for(int i=0;i<14;i++){ float t=0.35+(float(i)+j)*st; vec3 p=V*t, lv=p-uFPos; float l2=dot(lv,lv), cs=dot(lv,uFDir)*inversesqrt(l2);
+          if(cs<uFCos.x) continue;
+          vec4 q=uFMat*vec4(p,1.); q.xyz/=q.w; if(q.x<0.||q.x>1.||q.y<0.||q.y>1.||q.z>1.) continue;
+          float lit=step(q.z-0.002, unpackRGBAToDepth(texture2D(uFShadow,q.xy)))*texture2D(uFCookie,q.xy).r;
+          acc+=lit*smoothstep(uFCos.x,uFCos.y,cs)/pow(max(l2,0.2),0.8)*exp(-pow(uFogD*t,2.))*smoothstep(0.35,1.6,t); }
+        col+=uFCol*acc*st*uFScatter;
+      }
       gl_FragColor=vec4(col,1.); }`,
 });
 composer.addPass(depthFX);
@@ -1083,6 +1120,9 @@ function updateDepthFX() {
   const u = depthFX.uniforms; u.uProjInv.value.copy(camera.projectionMatrixInverse); u.uProjY.value = camera.projectionMatrix.elements[5];
   const list = lights.map(e => [e, e.dead ? 0 : e.light.intensity / (e.light.position.distanceToSquared(camera.position) + 20)]).filter(a => a[1] > 0.004).sort((a, b) => b[1] - a[1]).slice(0, NL);
   u.uNL.value = list.length;
+  u.uFOn.value = flash.intensity > 0.5 ? 1 : 0; u.uFPos.value.copy(flash.position).applyMatrix4(camera.matrixWorldInverse);
+  u.uFDir.value.subVectors(flash.target.position, flash.position).transformDirection(camera.matrixWorldInverse);
+  u.uFCos.value.set(Math.cos(flash.angle), Math.cos(flash.angle * (1 - flash.penumbra))); u.uFCol.value.set(flash.color.r, flash.color.g, flash.color.b).multiplyScalar(flash.intensity);
   list.forEach(([e], i) => { u.uLP.value[i].copy(e.light.position).applyMatrix4(camera.matrixWorldInverse); _lv.set(e.light.color.r, e.light.color.g, e.light.color.b).multiplyScalar(e.light.intensity); u.uLC.value[i].copy(_lv); });
 }
 
@@ -1279,7 +1319,7 @@ function frame(now) {
   updateWorld(dt);
   rain.update(dt, camera.position);
   updateExposure(dt); grade.uniforms.uExposure.value = EXP.cur;
-  sky.position.copy(camera.position); camera.updateMatrixWorld(); updateDepthFX(); depthFX.uniforms.uT.value = grade.uniforms.uT.value;
+  sky.position.copy(camera.position); updateFlashRig(dt, G.t + (G.idle || 0)); updateDepthFX(); depthFX.uniforms.uT.value = grade.uniforms.uT.value;
   const low = clamp((45 - P.hp) / 45, 0, 1);
   grade.uniforms.uT.value = (now % 10000) / 1000; grade.uniforms.uFear.value = P.fear; grade.uniforms.uLow.value = P.dead ? 1 : low; grade.uniforms.uDmg.value = P.dmgFlash;
   grade.uniforms.uDead.value = P.dead ? clamp((G.t - P.deathT) / 2.5, 0, 0.94) : 0;
@@ -1288,6 +1328,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__ruptura = { G, P, keys, camera, lights, flash, beam, scene, renderer, EXP, composer,
-  settle() { EXP.cur = EXP.target; }, debugFlash(on) { P.flashOn = on; flash.intensity = on ? FLASH_CD : 0; beam.visible = on; } };
+window.__ruptura = { G, P, keys, camera, lights, flash, scene, renderer, EXP, composer,
+  settle() { EXP.cur = EXP.target; }, debugFlash(on) { P.flashOn = on; flash.intensity = on ? FLASH_CD : 0; flashRig.snap = true; } };
 </script>
