@@ -41,27 +41,46 @@ kbd { font-family: var(--f-display); font-weight: 700; font-size: 14px; letter-s
 #mobile-note { display: none; color: var(--sodium); font-size: 14px; }
 @media (hover: none) and (pointer: coarse) { #mobile-note { display: block; } }
 
-/* HUD */
-#cross { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: rgba(230, 228, 220, 0.8); }
-#ammo { position: absolute; right: calc(36px + env(safe-area-inset-right, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px)); text-align: right; }
-#ammo .w { font-size: 15px; color: var(--ash); }
-#ammo .n { font-size: 48px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
-#ammo .n small { font-size: 22px; color: var(--ash); }
-#ammo .bar { height: 3px; background: #222; margin-top: 6px; } #ammo .bar i { display: block; height: 100%; background: var(--bone); width: 0; }
-#battery { position: absolute; left: calc(36px + env(safe-area-inset-left, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px)); font-size: 14px; color: var(--ash); }
-#battery .cells { display: flex; gap: 4px; margin-top: 6px; } #battery .cells i { width: 24px; height: 7px; background: #1c1c1c; }
-#battery .cells i.on { background: var(--bone); } #battery.low .cells i.on { background: var(--blood); }
-#stam { position: absolute; left: 50%; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); width: 240px; margin-left: -120px; height: 3px; background: rgba(0, 0, 0, 0.5); }
+/* HUD: discreto e cinematográfico. Cada bloco tem sombra de texto forte e um véu escuro suave atrás,
+   para continuar legível tanto contra o facho da lanterna quanto no escuro total. Tamanhos acompanham a tela. */
+#hud { --pad: clamp(16px, 2.6vw, 40px); --dim: #aaa69d; }
+.hud-txt { text-shadow: 0 0 8px rgba(0, 0, 0, 0.95), 0 1px 2px #000; }
+#cross { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: rgba(230, 228, 220, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+#ammo { position: absolute; right: calc(var(--pad) + env(safe-area-inset-right, 0px) - 18px); bottom: calc(var(--pad) + env(safe-area-inset-bottom, 0px) - 12px); text-align: right; padding: 14px 18px 12px 48px;
+  background: radial-gradient(ellipse 80% 90% at 80% 65%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 72%); transition: opacity 0.3s; }
+#ammo .w { font-size: clamp(12px, 1.05vw, 15px); color: var(--dim); letter-spacing: 0.2em; }
+#ammo .n { font-size: clamp(36px, 3.5vw, 54px); font-weight: 500; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--bone); }
+#ammo .n small { font-size: 0.44em; color: var(--dim); letter-spacing: 0.05em; }
+#ammo .bar { height: 2px; background: rgba(255, 255, 255, 0.12); margin-top: 6px; } #ammo .bar i { display: block; height: 100%; background: var(--bone); width: 0; }
+#battery { position: absolute; left: calc(var(--pad) + env(safe-area-inset-left, 0px) - 18px); bottom: calc(var(--pad) + env(safe-area-inset-bottom, 0px) - 12px); padding: 12px 48px 14px 18px; display: grid; gap: 7px;
+  background: radial-gradient(ellipse 80% 90% at 20% 65%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 72%); }
+#battery .lbl { display: flex; gap: 12px; align-items: baseline; font-size: clamp(12px, 1.05vw, 15px); letter-spacing: 0.2em; color: var(--dim); }
+#battery .pct { color: var(--bone); font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
+#battery .batt { display: flex; align-items: center; }
+#battery .body { display: flex; gap: 3px; padding: 3px; border: 1px solid rgba(216, 211, 200, 0.6); border-radius: 2px; }
+#battery .body i { width: clamp(14px, 1.3vw, 20px); height: 8px; background: rgba(255, 255, 255, 0.07); }
+#battery .body i.on { background: var(--bone); } #battery .tip { width: 3px; height: 6px; background: rgba(216, 211, 200, 0.6); margin-left: 2px; }
+#battery.low .body i.on { background: var(--blood); } #battery.low .pct { color: #d2483a; } #battery.off .body i.on { background: #6d6a64; }
+#stam { position: absolute; left: 50%; bottom: calc(var(--pad) + 12px + env(safe-area-inset-bottom, 0px)); width: min(240px, 50vw); transform: translateX(-50%); height: 3px; background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 #stam i { display: block; height: 100%; width: 100%; background: var(--bone); } #stam.tired i { background: var(--blood); }
-#prompt { position: absolute; left: 0; right: 0; top: 68%; text-align: center; font-size: 22px; }
+#prompt { position: absolute; left: 0; right: 0; top: 66%; text-align: center; font-size: clamp(16px, 1.5vw, 21px); letter-spacing: 0.08em; }
+#prompt kbd { font-size: 0.85em; margin-right: 10px; vertical-align: 1px; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
 #prompt .p { display: inline-block; height: 3px; width: 240px; background: #222; margin-top: 8px; } #prompt .p i { display: block; height: 100%; background: var(--bone); width: 0; }
-#banner { position: absolute; left: 0; right: 0; top: 18%; text-align: center; transition: opacity 0.6s; }
-#banner .t { font-size: 17px; color: var(--blood); letter-spacing: 0.3em; } #banner .s { font-family: var(--f-type); font-size: 20px; margin-top: 8px; padding-inline: 16px; }
-#toast { position: absolute; left: 0; right: 0; bottom: 21%; text-align: center; font-family: var(--f-type); font-size: 17px; color: #d6cfbf; transition: opacity 0.4s; padding-inline: 16px; }
-#status { position: absolute; left: calc(36px + env(safe-area-inset-left, 0px)); top: calc(36px + env(safe-area-inset-top, 0px)); background: var(--panel); padding: 16px 20px; min-width: 300px; display: grid; gap: 6px; font-size: 15px; }
+#banner { position: absolute; left: 0; right: 0; top: 14%; text-align: center; transition: opacity 0.6s; }
+#banner .box { display: inline-block; max-width: min(66ch, calc(100% - 32px)); padding: 12px clamp(20px, 4vw, 56px) 14px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.6) 16%, rgba(0, 0, 0, 0.6) 84%, rgba(0, 0, 0, 0)); }
+#banner .t { font-size: clamp(11px, 0.95vw, 14px); color: #c8392b; letter-spacing: 0.34em; }
+#banner.radio .t::before { content: "●"; margin-right: 0.7em; animation: rec 1.2s steps(2, jump-none) infinite; }
+#banner .s { font-family: var(--f-type); font-size: clamp(15px, 1.3vw, 20px); line-height: 1.5; margin-top: 6px; color: #e4ded2; text-wrap: balance; }
+#banner .s .rest { opacity: 0; }
+#toast { position: absolute; left: 0; right: 0; bottom: 20%; text-align: center; transition: opacity 0.4s; padding-inline: 16px; }
+#toast span { display: inline-block; padding: 8px clamp(18px, 3vw, 40px); font-family: var(--f-type); font-size: clamp(14px, 1.15vw, 18px); color: #ddd6c8;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55) 18%, rgba(0, 0, 0, 0.55) 82%, rgba(0, 0, 0, 0)); }
+#status { position: absolute; left: calc(var(--pad) + env(safe-area-inset-left, 0px)); top: calc(var(--pad) + env(safe-area-inset-top, 0px)); background: var(--panel); padding: 16px 20px; min-width: 300px; display: grid; gap: 6px; font-size: clamp(14px, 1.1vw, 16px); }
 #status .cond { font-family: var(--f-display); font-size: 28px; letter-spacing: 0.12em; }
-#status .row { display: flex; justify-content: space-between; gap: 18px; color: var(--ash); font-variant-numeric: tabular-nums; }
+#status .row { display: flex; justify-content: space-between; gap: 18px; color: var(--dim); font-variant-numeric: tabular-nums; }
 #status .obj { color: var(--bone); border-top: 1px solid #2a2a2a; padding-top: 8px; margin-top: 4px; max-width: 34ch; }
+@keyframes rec { 50% { opacity: 0.2; } }
 #marker { position: absolute; width: 18px; height: 18px; margin: -9px; border: 2px solid rgba(220, 205, 180, 0.75); transform: rotate(45deg); }
 #marker span { position: absolute; top: 22px; left: 50%; transform: rotate(-45deg) translateX(-30%); font-size: 13px; color: rgba(220, 205, 180, 0.85); white-space: nowrap; }
 #end { pointer-events: auto; display: grid; place-items: center; background: rgba(0, 0, 0, 0.88); text-align: center; padding-inline: 16px; }
@@ -73,7 +92,7 @@ kbd { font-family: var(--f-display); font-weight: 700; font-size: 14px; letter-s
 #pause { pointer-events: auto; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); font-family: var(--f-display); font-size: 26px; letter-spacing: 0.3em; cursor: pointer; text-align: center; }
 #pause small { display: block; font-family: var(--f-type); font-size: 14px; letter-spacing: 0; color: var(--ash); margin-top: 10px; }
 @media (max-width: 520px) { #status { min-width: 0; right: 16px; } #ammo .n { font-size: 36px; } }
-@media (prefers-reduced-motion: reduce) { #banner, #toast { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #banner, #toast, #ammo { transition: none; } #banner.radio .t::before { animation: none; } }
 </style>
 
 <canvas id="game"></canvas>
@@ -82,11 +101,11 @@ kbd { font-family: var(--f-display); font-weight: 700; font-size: 14px; letter-s
   <div id="cross" hidden></div>
   <div id="marker" hidden><span></span></div>
   <div id="ammo" hidden><div class="w"></div><div class="n"></div><div class="bar"><i></i></div></div>
-  <div id="battery" hidden><span>LANTERNA</span><div class="cells"><i></i><i></i><i></i><i></i><i></i></div></div>
+  <div id="battery" hidden><div class="lbl"><span class="name">LANTERNA</span><span class="pct"></span></div><div class="batt"><div class="body"><i></i><i></i><i></i><i></i><i></i></div><div class="tip"></div></div></div>
   <div id="stam" hidden><i></i></div>
   <div id="prompt" hidden><div class="tx"></div><div class="p"><i></i></div></div>
-  <div id="banner" style="opacity:0"><div class="t"></div><div class="s"></div></div>
-  <div id="toast" style="opacity:0"></div>
+  <div id="banner" style="opacity:0"><div class="box"><div class="t"></div><div class="s"></div></div></div>
+  <div id="toast" style="opacity:0"><span></span></div>
   <div id="status" hidden></div>
 </div>
 
@@ -188,7 +207,7 @@ function skyMaterial() {
         float n=vn(q)*0.55+vn(q*2.1)*0.3+vn(q*4.3)*0.15;
         vec3 col=mix(uHorizon, uHorizon*vec3(0.18,0.2,0.26), smoothstep(0.,0.55,h));
         col*=0.65+0.7*n;
-        col=mix(col, uHorizon*0.5, smoothstep(0.,-0.25,h));
+        col=mix(col, uHorizon*0.5, (1.-smoothstep(-0.25,0.,h)));
         col+=uFlash*(0.04+0.5*n*n)*vec3(0.62,0.68,0.85)*smoothstep(-0.05,0.35,h);
         gl_FragColor=vec4(col,1.); }`,
     side: THREE.BackSide, depthWrite: false, fog: false,
@@ -583,18 +602,108 @@ for (const [material, geos] of buckets) {
 }
 const worldMeshes = scene.children.filter(o => o.userData.world);
 
-// Chuva
-const rain = (() => {
-  const n = 2200, pos = new Float32Array(n * 6), drops = [];
-  for (let i = 0; i < n; i++) drops.push([frand(-14, 14), frand(0, 14), frand(-14, 14)]);
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const mesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x8a95a8, transparent: true, opacity: 0.17 }));
-  mesh.frustumCulled = false; scene.add(mesh);
-  return { update(dt, c) {
-    for (let i = 0; i < n; i++) { const d = drops[i]; d[1] -= 28 * dt; d[0] += 2.6 * dt; if (d[1] < 0) { d[1] += 14; d[0] = frand(-14, 14); d[2] = frand(-14, 14); }
-      const x = c.x + d[0], y = d[1], z = c.z + d[2]; pos.set([x, y, z, x - 0.05, y + 0.6, z], i * 6); }
-    g.attributes.position.needsUpdate = true; } };
-})();
+// Chuva, respingos, poças e reflexos. Tudo calculado na GPU a partir do tempo (nenhum laço por gota no
+// JavaScript). As gotas só aparecem de verdade onde há luz: perto dos postes e no facho da lanterna.
+const NEAR_N = 8, nearLights = [];
+const RU = {
+  uT: { value: 0 }, uCam: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector2(1.2, 0.35) }, uDensity: { value: 0.85 }, uFlash: { value: 0 },
+  uFPos: { value: new THREE.Vector3() }, uFDir: { value: new THREE.Vector3() }, uFCos: { value: new THREE.Vector2() }, uFCol: { value: new THREE.Vector3() },
+  uGain: { value: 1 }, uPix: { value: 0.002 }, uNL: { value: 0 }, uLP: { value: Array.from({ length: NEAR_N }, () => new THREE.Vector3()) }, uLC: { value: Array.from({ length: NEAR_N }, () => new THREE.Vector3()) }, uFogD: { value: 0.046 },
+};
+const LIGHT_AT = `uniform vec3 uFPos, uFDir, uFCol, uLP[${NEAR_N}], uLC[${NEAR_N}]; uniform vec2 uFCos; uniform int uNL; uniform float uFlash;
+  vec3 lightAt(vec3 p){
+    vec3 L = vec3(0.6,0.66,0.85)*(1.2+uFlash*60.);
+    vec3 lv=p-uFPos; float l2=dot(lv,lv); L+=uFCol*smoothstep(uFCos.x,uFCos.y,dot(lv,uFDir)*inversesqrt(l2))/pow(max(l2,0.3),0.8);
+    for(int i=0;i<${NEAR_N};i++){ if(i>=uNL) break; vec3 d=uLP[i]-p; L+=uLC[i]/(dot(d,d)+0.6); }
+    return L; }`;
+function quadField(n, extra) {
+  const g = new THREE.BufferGeometry(), seed = new Float32Array(n * 16), corner = new Float32Array(n * 8), idx = new Uint32Array(n * 6);
+  for (let i = 0; i < n; i++) {
+    const sd = [Math.random(), Math.random(), Math.random(), Math.random()];
+    for (let k = 0; k < 4; k++) { seed.set(sd, (i * 4 + k) * 4); corner.set(extra[k], (i * 4 + k) * 2); }
+    idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 2, i * 4 + 1, i * 4 + 3], i * 6);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 12), 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4)); g.setAttribute('aCorner', new THREE.BufferAttribute(corner, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  return g;
+}
+const rain = new THREE.Mesh(quadField(7000, [[-1, 0], [1, 0], [-1, 1], [1, 1]]), new THREE.ShaderMaterial({
+  uniforms: RU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `attribute vec4 aSeed; attribute vec2 aCorner; uniform float uT, uDensity, uFogD, uGain, uPix; uniform vec3 uCam; uniform vec2 uWind; varying vec3 vL; varying vec2 vC;
+    ${LIGHT_AT}
+    void main(){
+      const float BOX=26., H=15.; float spd=12.5+4.*aSeed.w;
+      vec2 xz=uCam.xz+mod(aSeed.xy*BOX+uWind*uT-uCam.xz+BOX*0.5,BOX)-BOX*0.5;
+      vec3 p=vec3(xz.x, mod(aSeed.z*H-uT*spd,H), xz.y);
+      vec3 vel=normalize(vec3(uWind.x,-spd,uWind.y)), toC=uCam-p; float dist=length(toC);
+      // Largura mínima de 1,5 pixel na tela (mais fina some ou cintila); o brilho compensa a largura extra
+      float hw=max(0.0018, dist*uPix*0.75), thin=sqrt(0.0018/hw); vec3 side=normalize(cross(vel,toC))*hw;
+      vec3 pos=p+side*aCorner.x-vel*(0.45+0.3*aSeed.w)*aCorner.y;
+      float on=step(fract(aSeed.z*7.13+aSeed.x*3.1),uDensity);
+      vL=lightAt(p)*exp(-pow(uFogD*dist,2.))*0.0055*on*uGain*thin; vC=aCorner;
+      gl_Position=projectionMatrix*viewMatrix*vec4(pos,1.); if(on<0.5) gl_Position=vec4(2.,2.,2.,1.); }`,
+  fragmentShader: `varying vec3 vL; varying vec2 vC; void main(){ float a=(1.-abs(vC.x))*smoothstep(0.,0.2,vC.y)*(1.-smoothstep(0.55,1.,vC.y)); gl_FragColor=vec4(vL*a,1.); }`,
+}));
+rain.frustumCulled = false; rain.renderOrder = 2; scene.add(rain);
+const splashes = new THREE.Mesh(quadField(900, [[-1, -1], [1, -1], [-1, 1], [1, 1]]), new THREE.ShaderMaterial({
+  uniforms: RU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `attribute vec4 aSeed; attribute vec2 aCorner; uniform float uT, uDensity, uFogD; uniform vec3 uCam; varying vec3 vL; varying vec2 vC; varying float vPh;
+    ${LIGHT_AT}
+    void main(){
+      float cyc=uT*(1.4+aSeed.w)+aSeed.z*10., k=floor(cyc); vPh=fract(cyc);
+      vec2 h=fract(sin(vec2(k*12.9898+aSeed.x*78.233, k*39.3468+aSeed.y*11.135))*43758.5453);
+      vec3 p=vec3(uCam.x+(h.x*2.-1.)*12., 0.025, uCam.z+(h.y*2.-1.)*12.);
+      if(abs(p.x)>9. && abs(p.x)<13. && p.z>-50. && p.z<10.) p.y=0.155; // calçadas
+      float on=step(fract(aSeed.z*5.71+aSeed.y*2.3),uDensity);
+      vec3 pos=p+vec3(aCorner.x,0.,aCorner.y)*(0.025+0.085*vPh);
+      vL=lightAt(p)*exp(-pow(uFogD*length(uCam-p),2.))*0.004*on; vC=aCorner;
+      gl_Position=projectionMatrix*viewMatrix*vec4(pos,1.); if(on<0.5) gl_Position=vec4(2.,2.,2.,1.); }`,
+  fragmentShader: `varying vec3 vL; varying vec2 vC; varying float vPh; void main(){ float r=length(vC); float ring=(1.-smoothstep(0.,0.22,abs(r-0.72)))*(1.-vPh)*(1.-vPh); float drop=(1.-smoothstep(0.,0.3,r))*(1.-smoothstep(0.,0.25,vPh))*1.5; gl_FragColor=vec4(vL*(ring+drop),1.); }`,
+}));
+splashes.frustumCulled = false; splashes.renderOrder = 2; scene.add(splashes);
+// Poças: ondulações de gotas caindo (normais animadas), espelho quase perfeito entre elas
+M.water.metalness = 0; M.water.roughness = 0.035; M.water.envMapIntensity = 1.6; M.water.color.setRGB(0.006, 0.007, 0.009, THREE.LinearSRGBColorSpace);
+M.water.onBeforeCompile = sh => {
+  sh.uniforms.uT = RU.uT;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; uniform float uT;').replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+    { vec2 g=vec2(0.), q=vWP.xz*3.2;
+      for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){ vec2 c=floor(q)+vec2(i,j); float hh=fract(sin(dot(c,vec2(127.1,311.7)))*43758.5453);
+        float ph=fract(uT*1.25+hh); vec2 d=q-(c+0.5+(vec2(fract(hh*13.7),fract(hh*71.3))-0.5)*0.7); float dl=length(d), x=(dl-ph*1.1)*16.;
+        g+=d/(dl+1e-4)*sin(x)*(1.-ph)*(1.-ph)*step(abs(x),6.2832)*0.5; }
+      normal=normalize(normal+(viewMatrix*vec4(g.x,0.,g.y,0.)).xyz*0.35); }`);
+};
+M.water.customProgramCacheKey = () => 'poca';
+// Reflexos das luzes no chão molhado: um filete alongado no ponto onde o asfalto espelharia a lâmpada
+const streakMat = () => new THREE.ShaderMaterial({ uniforms: { uC: { value: new THREE.Vector3() }, uT: RU.uT, uS: { value: Math.random() * 10 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv-0.5; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: 'uniform vec3 uC; uniform float uT, uS; varying vec2 vUv; void main(){ float a=exp(-pow(vUv.x*5.,2.))*exp(-pow(vUv.y*2.6,2.))*(0.7+0.3*sin(vUv.y*46.+uT*7.+uS))*(0.8+0.2*sin(vUv.x*31.-uT*5.)); gl_FragColor=vec4(uC*a,1.); }' });
+const streakGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const glints = Array.from({ length: NEAR_N }, () => { const m = new THREE.Mesh(streakGeo, streakMat()); m.frustumCulled = false; m.renderOrder = 1; m.visible = false; scene.add(m); return m; });
+const _sm = new THREE.Vector3(), _sr = new THREE.Vector3(), _cf = new THREE.Vector3();
+// Tempo: a chuva engrossa e afina, o vento muda em rajadas, e o som acompanha
+const WEATHER = { d: 0.85, target: 0.85, next: 20, gust: 0 };
+function updateRain(dt, t) {
+  WEATHER.next -= dt; if (WEATHER.next <= 0) { WEATHER.next = frand(15, 40); WEATHER.target = frand(0.45, 1); }
+  WEATHER.d = lerp(WEATHER.d, WEATHER.target, 1 - Math.exp(-dt * 0.15));
+  const gust = 0.5 + 0.5 * noise1(t * 0.13 + 4); RU.uWind.value.set(0.6 + 2.4 * gust * WEATHER.d, 0.2 + 0.6 * noise1(t * 0.09));
+  RU.uT.value = t; RU.uDensity.value = WEATHER.d; RU.uCam.value.copy(camera.position); RU.uPix.value = 2 * Math.tan(camera.fov * DEG / 2) / (innerHeight * renderer.getPixelRatio());
+  if (A.rainGain) A.rainGain.gain.value = 0.05 + 0.09 * WEATHER.d * (0.85 + 0.3 * gust);
+  // Luzes que iluminam a chuva (as mesmas do halo na neblina) e a lanterna
+  RU.uNL.value = nearLights.length;
+  nearLights.forEach((e, i) => { RU.uLP.value[i].copy(e.light.position); RU.uLC.value[i].set(e.light.color.r, e.light.color.g, e.light.color.b).multiplyScalar(e.light.intensity); });
+  RU.uFPos.value.copy(flash.position); RU.uFDir.value.subVectors(flash.target.position, flash.position).normalize();
+  RU.uFCos.value.set(Math.cos(flash.angle), Math.cos(flash.angle * (1 - flash.penumbra))); RU.uFCol.value.set(flash.color.r, flash.color.g, flash.color.b).multiplyScalar(flash.intensity);
+  // Reflexos no chão
+  const C = camera.position; camera.getWorldDirection(_cf);
+  glints.forEach((m, i) => {
+    const e = nearLights[i]; m.visible = false; if (!e || e.light.intensity <= 0) return;
+    const L = e.light.position; _sm.set(L.x, -L.y, L.z); const k = C.y / (C.y + L.y); _sr.copy(C).lerp(_sm, k); _sr.y = 0.03;
+    const dx = C.x - _sr.x, dz = C.z - _sr.z, dist = Math.hypot(dx, dz); if (dist > 45 || (_sr.x - C.x) * _cf.x + (_sr.z - C.z) * _cf.z < 0) return;
+    m.visible = true; m.position.copy(_sr); m.rotation.y = Math.atan2(dx, dz); m.scale.set(0.25 + dist * 0.02, 1, clamp(dist * 0.35, 1.2, 9));
+    const md2 = _sm.distanceToSquared(C), fog = Math.exp(-((0.046 * dist) ** 2));
+    m.material.uniforms.uC.value.set(e.light.color.r, e.light.color.g, e.light.color.b).multiplyScalar(e.light.intensity * 0.06 / md2 * fog * (0.6 + 0.4 * WEATHER.d));
+  });
+}
 
 // ============================================================================================
 // Colisão 2D (círculo contra caixas orientadas) e linha de visão
@@ -759,6 +868,7 @@ function buildInfected(elite, scale) {
   B.hitBody = part(B.chest, hitMat, 0, 0, 10, 40, 50, 120); B.hitBody.castShadow = false;
   B.hitLegs = part(body, hitMat, 0, 0, 48, 34, 44, 92); B.hitLegs.castShadow = false;
   B.hitHead = part(B.head, hitMat, 2, 0, 14, 26, 24, 30, true); B.hitHead.castShadow = false;
+  root.traverse(o => { if (o.isMesh && Math.max(o.scale.x, o.scale.y, o.scale.z) < 0.09) o.castShadow = false; }); // olhos, manchas: sem sombra
   B.limp = frand(0.15, 0.85); B.tilt = frand(-22, 22) * DEG; B.seed = frand(0, 1000); B.phase = 0; B.clock = 0; B.tw = [0, 0, 0]; B.twT = [0, 0, 0]; B.nextTw = frand(0, 2);
   return B;
 }
@@ -1077,7 +1187,7 @@ function updatePlayer(dt) {
     if (Math.hypot(p.g.position.x - P.pos.x, p.g.position.z - P.pos.z) > 1.1) continue;
     let ok = false, msg = '';
     if (p.type === 'vida' && P.hp < 100) { P.hp = Math.min(100, P.hp + p.amount); ok = true; msg = '+ Kit de primeiros socorros'; }
-    if (p.type === 'bateria' && P.battery < 0.99) { P.battery = Math.min(1, P.battery + p.amount / 100); ok = true; msg = '+ Pilhas para a lanterna'; }
+    if (p.type === 'bateria' && P.battery < 0.99) { P.battery = Math.min(1, P.battery + p.amount / 100); P.lastToggle = G.t; ok = true; msg = '+ Pilhas para a lanterna'; }
     if (p.type === 'municao') { const a0 = P.weapons[0], a1 = P.weapons[1]; const before = a0.reserve + a1.reserve; a0.reserve = Math.min(a0.maxRes, a0.reserve + p.amount); a1.reserve = Math.min(a1.maxRes, a1.reserve + Math.max(1, Math.floor(p.amount / 4))); ok = a0.reserve + a1.reserve > before; msg = '+ Munição'; }
     if (ok) { SFX.pickup(); toast(msg, 1.6); scene.remove(p.g); }
   }
@@ -1206,7 +1316,7 @@ function updateWorld(dt) {
   G.nextThunder -= dt;
   if (G.nextThunder <= 0) { G.nextThunder = frand(9, 24); G.lightning = 0; G.thunderAt = G.t + frand(0.6, 2.2); }
   G.lightning += dt; let fl = 0; if (G.lightning < 0.08) fl = 1; else if (G.lightning >= 0.16 && G.lightning < 0.4) fl = 0.8 * (1 - (G.lightning - 0.16) / 0.24);
-  moon.intensity = 0.2 + fl * 4; hemi.intensity = 0.4 + fl * 2.5; sky.material.uniforms.uFlash.value = fl; sky.material.uniforms.uT.value = G.t + (G.idle || 0);
+  moon.intensity = 0.2 + fl * 4; hemi.intensity = 0.4 + fl * 2.5; sky.material.uniforms.uFlash.value = fl; RU.uFlash.value = fl; sky.material.uniforms.uT.value = G.t + (G.idle || 0);
   if (G.thunderAt > 0 && G.t >= G.thunderAt) { G.thunderAt = -1; SFX.thunder(frand(0.6, 0.9)); }
   // Sons atrás de você
   G.nextAmbient -= dt;
@@ -1304,6 +1414,7 @@ const _lv = new THREE.Vector3();
 function updateDepthFX() {
   const u = depthFX.uniforms; u.uProjInv.value.copy(camera.projectionMatrixInverse); u.uProjY.value = camera.projectionMatrix.elements[5];
   const list = lights.map(e => [e, e.dead ? 0 : e.light.intensity / (e.light.position.distanceToSquared(camera.position) + 20)]).filter(a => a[1] > 0.004).sort((a, b) => b[1] - a[1]).slice(0, NL);
+  nearLights.length = 0; for (const [e] of list) nearLights.push(e);
   u.uNL.value = list.length;
   u.uFOn.value = flash.intensity > 0.5 ? 1 : 0; u.uFPos.value.copy(flash.position).applyMatrix4(camera.matrixWorldInverse);
   u.uFDir.value.subVectors(flash.target.position, flash.position).transformDirection(camera.matrixWorldInverse);
@@ -1360,6 +1471,9 @@ const grade = new ShaderPass({
       // Aberração cromática discreta (cresce com medo e ferimento)
       vec2 off=c*r*(0.0015+uFear*0.006+uDmg*0.012)*4.;
       vec3 hdr=vec3(texture2D(tDiffuse,vUv+off).r, texture2D(tDiffuse,vUv).g, texture2D(tDiffuse,vUv-off).b);
+      // Nitidez leve (compensa o amaciamento do antisserrilhamento), limitada para não criar halos
+      vec2 px=1./uRes; vec3 nb=(texture2D(tDiffuse,vUv+vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv-vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv+vec2(0.,px.y)).rgb+texture2D(tDiffuse,vUv-vec2(0.,px.y)).rgb)*0.25;
+      hdr=max(hdr+clamp(hdr-nb,-0.25*hdr,0.25*hdr)*0.35,0.);
       vec3 col=agx(hdr*uExposure);
       // Gradação: menos saturação, sombras frias e realces quentes, suave
       float l=dot(col,vec3(.2126,.7152,.0722));
@@ -1410,16 +1524,26 @@ const hud = { cross: $('cross'), ammo: $('ammo'), bat: $('battery'), stam: $('st
 function updateHUD() {
   const w = weapon(), statusHeld = keys.has('Tab') && !P.dead;
   hud.cross.hidden = !P.aiming || P.dead;
-  const showAmmo = (P.aiming || P.reloading || w.mag === 0) && !P.dead; hud.ammo.hidden = !showAmmo;
+  const showAmmo = (P.aiming || P.reloading || w.mag === 0 || G.t - P.lastShot < 2.2 || G.t - (P.lastSwitch || -10) < 2.2) && !P.dead; hud.ammo.hidden = !showAmmo;
   if (showAmmo) { hud.ammo.querySelector('.w').textContent = w.name; hud.ammo.querySelector('.n').innerHTML = `${w.mag} <small>/ ${w.reserve}</small>`; hud.ammo.querySelector('.n').style.color = w.mag <= Math.max(1, w.magSize / 4) ? 'var(--blood)' : ''; hud.ammo.querySelector('.bar').style.visibility = P.reloading ? 'visible' : 'hidden'; hud.ammo.querySelector('.bar i').style.width = `${clamp((G.t - P.reloadStart) / w.reload, 0, 1) * 100}%`; }
   const recent = G.t - P.lastToggle < 2.5, low = P.battery < 0.2; hud.bat.hidden = !(recent || low || statusHeld) || P.dead;
-  if (!hud.bat.hidden) { hud.bat.classList.toggle('low', low); hud.bat.querySelector('span').textContent = isFlashOn() ? 'LANTERNA' : 'LANTERNA (DESLIGADA)'; hud.bat.querySelectorAll('i').forEach((c, i) => c.classList.toggle('on', P.battery > (i + 0.5) / 5)); hud.bat.style.opacity = low && !recent ? 0.45 + 0.45 * Math.sin(G.t * 4) : 1; }
+  if (!hud.bat.hidden) {
+    hud.bat.classList.toggle('low', low); hud.bat.classList.toggle('off', !isFlashOn());
+    hud.bat.querySelector('.name').textContent = isFlashOn() ? 'LANTERNA' : 'LANTERNA · DESLIGADA'; hud.bat.querySelector('.pct').textContent = `${Math.round(P.battery * 100)}%`;
+    hud.bat.querySelectorAll('i').forEach((c, i) => c.classList.toggle('on', P.battery > (i + 0.5) / 5)); hud.bat.style.opacity = low && !recent ? 0.55 + 0.4 * Math.sin(G.t * 4) : 1;
+  }
   hud.stam.hidden = P.stamina >= 0.99 || P.dead; if (!hud.stam.hidden) { hud.stam.firstChild.style.width = `${P.stamina * 100}%`; hud.stam.classList.toggle('tired', P.exhausted); hud.stam.style.opacity = clamp((1 - P.stamina) * 3, 0, 0.8); }
   const f = G.focus; hud.prompt.hidden = !f || P.dead;
-  if (f) { hud.prompt.querySelector('.tx').textContent = f.can() ? `[E]  ${f.prompt()}` : f.prompt(); hud.prompt.querySelector('.tx').style.color = f.can() ? '' : 'var(--blood)'; hud.prompt.querySelector('.p').style.visibility = 'hidden'; }
+  if (f) { const tx = hud.prompt.querySelector('.tx'); if (f.can()) { tx.innerHTML = '<kbd>E</kbd>'; tx.append(f.prompt()); } else tx.textContent = f.prompt(); hud.prompt.querySelector('.tx').style.color = f.can() ? '' : 'var(--blood)'; hud.prompt.querySelector('.p').style.visibility = 'hidden'; }
   const bAlpha = G.t < G.banner.until ? Math.min(clamp((G.t - G.banner.start) / 0.6, 0, 1), clamp((G.banner.until - G.t) / 0.8, 0, 1)) : 0;
-  hud.banner.style.opacity = bAlpha; if (bAlpha > 0) { hud.banner.querySelector('.t').textContent = G.banner.t; hud.banner.querySelector('.s').textContent = G.banner.s; }
-  hud.toast.style.opacity = G.t < G.toast.until ? 1 : 0; if (G.t < G.toast.until) hud.toast.textContent = G.toast.s;
+  hud.banner.style.opacity = bAlpha;
+  if (bAlpha > 0) {
+    // Mensagem aparece como num rádio: letra por letra (o espaço da frase inteira já fica reservado)
+    const n = Math.floor((G.t - G.banner.start) * 46), sEl = hud.banner.querySelector('.s'), key = G.banner.s + '|' + Math.min(n, G.banner.s.length);
+    hud.banner.querySelector('.t').textContent = G.banner.t; hud.banner.classList.toggle('radio', G.banner.t.startsWith('RÁDIO'));
+    if (sEl.dataset.k !== key) { sEl.dataset.k = key; sEl.textContent = G.banner.s.slice(0, n); const rest = document.createElement('span'); rest.className = 'rest'; rest.textContent = G.banner.s.slice(n); sEl.append(rest); }
+  }
+  hud.toast.style.opacity = G.t < G.toast.until ? 1 : 0; if (G.t < G.toast.until) hud.toast.firstElementChild.textContent = G.toast.s;
   hud.status.hidden = !statusHeld;
   if (statusHeld) {
     const frac = P.hp / 100, [cond, col] = frac > 0.66 ? ['ESTÁVEL', '#8cb67f'] : frac > 0.33 ? ['FERIDO', 'var(--sodium)'] : ['CRÍTICO', 'var(--blood)'];
@@ -1474,15 +1598,24 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyC' || e.code === 'ControlLeft') P.crouch = !P.crouch;
   if (e.code === 'KeyF') { if (!P.flashOn && P.battery <= 0) { toast('Sem bateria. Procure pilhas.'); SFX.click(0.5); } else { P.flashOn = !P.flashOn; P.lastToggle = G.t; SFX.click(0.6); } }
   if (e.code === 'KeyR') startReload();
-  if (e.code === 'Digit1' || e.code === 'Digit2') { const i = e.code === 'Digit1' ? 0 : 1; if (i !== P.weapon) { P.weapon = i; P.reloading = false; P.lastShot = G.t - weapon().interval + 0.25; SFX.click(0.4); } }
+  if (e.code === 'Digit1' || e.code === 'Digit2') { const i = e.code === 'Digit1' ? 0 : 1; if (i !== P.weapon) { P.weapon = i; P.lastSwitch = G.t; P.reloading = false; P.lastShot = G.t - weapon().interval + 0.25; SFX.click(0.4); } }
   if (e.code === 'KeyQ') melee();
   if (e.code === 'ShiftLeft' && P.crouch) P.crouch = false;
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => { keys.clear(); P.firing = false; P.aiming = false; });
-canvas.addEventListener('wheel', e => { if (G.started && !P.dead) { P.weapon = 1 - P.weapon; P.reloading = false; } }, { passive: true });
+canvas.addEventListener('wheel', e => { if (G.started && !P.dead) { P.weapon = 1 - P.weapon; P.lastSwitch = G.t; P.reloading = false; } }, { passive: true });
 
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); grade.uniforms.uRes.value.set(w, h); depthFX.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+// Resolução dinâmica: se o quadro passa de ~24 ms por alguns segundos, renderiza com menos pixels;
+// se sobra folga, volta a subir. Mantém a taxa de quadros estável em máquinas mais fracas.
+const DYN = { max: Math.min(window.devicePixelRatio, 1.5), pr: Math.min(window.devicePixelRatio, 1.5), avg: 16, t: 0 };
+function dynRes(ms) {
+  if (G.noDyn || !G.started || G.over) return;
+  DYN.avg = lerp(DYN.avg, Math.min(ms, 100), 0.05); DYN.t += ms / 1000; if (DYN.t < 2.5) return; DYN.t = 0;
+  let pr = DYN.pr; if (DYN.avg > 24) pr = Math.max(0.6, pr * 0.85); else if (DYN.avg < 13.5) pr = Math.min(DYN.max, pr / 0.85);
+  if (Math.abs(pr - DYN.pr) > 0.01) { DYN.pr = pr; renderer.setPixelRatio(pr); composer.setPixelRatio(pr); resize(); }
+}
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); grade.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); depthFX.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio()); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
 // ============================================================================================
@@ -1494,7 +1627,7 @@ P.pos.copy(V(200, 0, 0)); camera.position.set(P.pos.x, 1.6, P.pos.z);
 camera.rotation.set(-0.03, 0, 0);
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const rawMs = now - last, dt = Math.min(0.05, rawMs / 1000); last = now; dynRes(rawMs);
   if (G.started && !G.over && $('pause').hidden) {
     G.t += dt; G.dt = dt;
     updatePlayer(dt);
@@ -1502,9 +1635,10 @@ function frame(now) {
     missionUpdate();
   } else if (!G.started) { G.idle = (G.idle || 0) + dt; camera.rotation.set(-0.03 + Math.sin(G.idle * 0.2) * 0.02, Math.sin(G.idle * 0.13) * 0.12, 0); for (const e of G.enemies) if (!e.dormant) { animateInfected(e.B, 0, false, -1, 0, dt); placeEnemy(e); } else updateEnemy(e, 0); }
   updateWorld(dt);
-  rain.update(dt, camera.position);
+  // Infectados além da neblina (> 48 m, menos de 1% de visibilidade) não são desenhados nem fazem sombra
+  for (const e of G.enemies) e.B.root.visible = e.pos.distanceToSquared(camera.position) < 48 * 48;
   updateExposure(dt); grade.uniforms.uExposure.value = EXP.cur;
-  sky.position.copy(camera.position); updateFlashRig(dt, G.t + (G.idle || 0)); updateDepthFX(); depthFX.uniforms.uT.value = grade.uniforms.uT.value;
+  sky.position.copy(camera.position); updateFlashRig(dt, G.t + (G.idle || 0)); updateDepthFX(); updateRain(dt, G.t + (G.idle || 0)); depthFX.uniforms.uT.value = grade.uniforms.uT.value;
   const low = clamp((45 - P.hp) / 45, 0, 1);
   grade.uniforms.uT.value = (now % 10000) / 1000; grade.uniforms.uFear.value = P.fear; grade.uniforms.uLow.value = P.dead ? 1 : low; grade.uniforms.uDmg.value = P.dmgFlash;
   grade.uniforms.uDead.value = P.dead ? clamp((G.t - P.deathT) / 2.5, 0, 0.94) : 0;
@@ -1513,6 +1647,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__ruptura = { G, P, keys, camera, lights, flash, scene, renderer, EXP, composer, texMs: TEX.ms,
+window.__ruptura = { G, P, keys, camera, lights, flash, scene, renderer, EXP, composer, texMs: TEX.ms, RU, rain,
   settle() { EXP.cur = EXP.target; }, debugFlash(on) { P.flashOn = on; flash.intensity = on ? FLASH_CD : 0; flashRig.snap = true; } };
 </script>
