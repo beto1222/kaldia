@@ -613,7 +613,7 @@ const RU = {
 const LIGHT_AT = `uniform vec3 uFPos, uFDir, uFCol, uLP[${NEAR_N}], uLC[${NEAR_N}]; uniform vec2 uFCos; uniform int uNL; uniform float uFlash;
   vec3 lightAt(vec3 p){
     vec3 L = vec3(0.6,0.66,0.85)*(1.2+uFlash*60.);
-    vec3 lv=p-uFPos; float l2=dot(lv,lv); L+=uFCol*smoothstep(uFCos.x,uFCos.y,dot(lv,uFDir)*inversesqrt(l2))/pow(max(l2,0.3),0.8);
+    vec3 lv=p-uFPos; float l2=dot(lv,lv); L+=uFCol*smoothstep(uFCos.x,uFCos.y,dot(lv,uFDir)*inversesqrt(l2))/pow(max(l2,2.),0.8); // gotas coladas na lente não viram riscos brancos
     for(int i=0;i<${NEAR_N};i++){ if(i>=uNL) break; vec3 d=uLP[i]-p; L+=uLC[i]/(dot(d,d)+0.6); }
     return L; }`;
 function quadField(n, extra) {
