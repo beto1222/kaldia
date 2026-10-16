@@ -135,7 +135,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 // ============================================================================================
 // Utilidades e coordenadas: a planta usa as unidades da Unreal (cm; X frente, Y direita, Z cima)
@@ -158,8 +158,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 2.1;
+// Tom e exposição são aplicados no passe final (AgX), depois de toda a luz HDR estar na imagem
+renderer.toneMapping = THREE.NoToneMapping;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020304);
@@ -173,7 +173,8 @@ camera.rotation.order = 'YXZ';
 scene.add(camera);
 
 // Lanterna presa à câmera, com feixe visível na neblina
-const flash = new THREE.SpotLight(0xffeed1, 700, 32, 27 * DEG, 0.55, 2);
+const FLASH_CD = 190; // queda 1,6: perto estoura menos, a 6 m ilumina como antes
+const flash = new THREE.SpotLight(0xffeed1, FLASH_CD, 30, 27 * DEG, 0.55, 1.6);
 flash.castShadow = true; flash.shadow.mapSize.set(1024, 1024); flash.shadow.camera.near = 0.2; flash.shadow.bias = -0.0006;
 flash.position.set(0.16, -0.14, 0.05); camera.add(flash);
 const flashTarget = new THREE.Object3D(); flashTarget.position.set(0.02, -0.08, -10); camera.add(flashTarget); flash.target = flashTarget;
@@ -199,11 +200,11 @@ function mat(rgb, rough, metal = 0, emi = 0) {
 const M = {
   asphalt: mat([0.02, 0.02, 0.022], 0.15, 0.1), concrete: mat([0.16, 0.155, 0.15], 0.9), mil: mat([0.12, 0.125, 0.11], 0.85),
   metal: mat([0.2, 0.2, 0.21], 0.45, 1), dark: mat([0.035, 0.037, 0.04], 0.5, 0.9), glass: mat([0.015, 0.02, 0.03], 0.45, 0.5),
-  lit: mat([0.9, 0.6, 0.3], 0.3, 0, 1.2), carR: mat([0.15, 0.025, 0.02], 0.35, 0.6), carB: mat([0.02, 0.04, 0.09], 0.35, 0.6),
+  lit: mat([0.9, 0.6, 0.3], 0.3, 0, 0.35), carR: mat([0.15, 0.025, 0.02], 0.35, 0.6), carB: mat([0.02, 0.04, 0.09], 0.35, 0.6),
   carW: mat([0.35, 0.35, 0.36], 0.35, 0.6), burned: mat([0.02, 0.017, 0.015], 0.95, 0.2), rubber: mat([0.012, 0.012, 0.012], 0.9),
   sandbag: mat([0.18, 0.15, 0.1], 0.95), hazard: mat([0.4, 0.27, 0.04], 0.75), rust: mat([0.18, 0.06, 0.025], 0.7, 0.5),
-  teal: mat([0.04, 0.1, 0.12], 0.7, 0.5), emRed: mat([1, 0.05, 0.03], 0.3, 0, 5), emOrange: mat([1, 0.45, 0.08], 0.3, 0, 5),
-  emWhite: mat([0.85, 0.95, 0.9], 0.3, 0, 3), water: mat([0.008, 0.009, 0.011], 0.08, 0.2), rubble: mat([0.1, 0.095, 0.09], 0.95),
+  teal: mat([0.04, 0.1, 0.12], 0.7, 0.5), emRed: mat([1, 0.05, 0.03], 0.3, 0, 3), emOrange: mat([1, 0.45, 0.08], 0.3, 0, 4),
+  emWhite: mat([0.85, 0.95, 0.9], 0.3, 0, 2.5), water: mat([0.008, 0.009, 0.011], 0.08, 0.2), rubble: mat([0.1, 0.095, 0.09], 0.95),
   blood: mat([0.07, 0.004, 0.003], 0.2), sheet: mat([0.42, 0.41, 0.38], 0.9), skin: mat([0.3, 0.27, 0.24], 0.55),
 };
 M.water.polygonOffset = M.blood.polygonOffset = true; M.water.polygonOffsetFactor = M.blood.polygonOffsetFactor = -2;
@@ -276,7 +277,7 @@ function car(x, y, yaw, paint, burned) {
 car(900, 300, 15, M.carR); car(1550, -600, -170, M.carB); car(2300, 650, 95, M.carW); car(2950, -200, 30, M.carR, true);
 car(3650, 500, -10, M.carW); car(4100, -650, 160, M.carB, true); car(4750, 250, 75, M.carR, true); car(3300, -820, 8, M.carW);
 box(M.carR, 3300, -820, 70, 446, 196, 14, 8, 0, 0, false); box(M.carW, 3260, -820, 160, 300, 186, 120, 8);
-light(0xff1408, 200, 3300, -820, 300, 1000, 2); light(0xe6e0c0, 12, 1180, -560, 120, 1300, 2);
+light(0xff1408, 120, 3300, -820, 300, 1000, 2); light(0xe6e0c0, 12, 1180, -560, 120, 1300, 2);
 for (const [x, y, yaw] of [[1200, -150, 90], [2600, 100, 0], [3300, 700, 60], [3900, -250, 120], [4500, 650, 0]]) box(M.concrete, x, y, 47, 220, 60, 95, yaw);
 box(M.sandbag, 4600, 900, 50, 320, 70, 100, 20); box(M.sandbag, 4650, -350, 50, 300, 70, 100, -10);
 box(M.teal, 4300, -850, 160, 650, 250, 300, 15); box(M.dark, 4680, -750, 120, 200, 240, 220, 15);
@@ -299,7 +300,7 @@ const CFX = 5500, BDX = 8000;
 for (const sd of [1, -1]) {
   box(M.mil, CFX, sd * 1850, 200, 80, 2500, 400); box(M.mil, CFX, sd * 650, 250, 120, 120, 500);
   box(M.hazard, CFX - 62, sd * 650, 250, 4, 120, 60, 0, 0, 0, false);
-  light(0xff2414, 500, CFX - 100, sd * 650, 480, 2600, 3); lampMesh(M.emRed, CFX - 64, sd * 650, 480, 10, 40, 20);
+  light(0xff2414, 260, CFX - 100, sd * 650, 480, 2600, 3); lampMesh(M.emRed, CFX - 64, sd * 650, 480, 10, 40, 20);
 }
 box(M.metal, 5300, 200, 10, 350, 480, 15, 20, 0, 0, false);
 box(M.rust, 6200, 1800, 130, 600, 240, 260); box(M.teal, 6200, 1800, 390, 600, 240, 260, 4, 0, 0, false);
@@ -310,11 +311,11 @@ box(M.mil, 7100, 2100, 150, 620, 20, 300); box(M.mil, 6800, 1800, 150, 20, 600, 
 box(M.mil, 6900, 1500, 150, 200, 20, 300); box(M.mil, 7300, 1500, 150, 200, 20, 300); box(M.mil, 7100, 1500, 265, 200, 20, 70, 0, 0, 0, false);
 box(M.mil, 7100, 1800, 310, 640, 640, 20, 0, 0, 0, false); box(M.metal, 7100, 1950, 45, 160, 70, 90); box(M.dark, 6900, 2000, 90, 60, 160, 180);
 box(M.blood, 7100, 2088, 140, 160, 2, 120, 0, 0, 8, false); box(M.blood, 7050, 1800, 0.8, 220, 160, 1, 30, 0, 0, false);
-const guardLight = light(0xd9f2d9, 220, 7100, 1800, 270, 900, 2);
-for (const sd of [1, -1]) { box(M.mil, BDX, sd * 1675, 300, 100, 2850, 600); box(M.hazard, BDX - 55, sd * 225, 175, 10, 40, 350, 0, 0, 0, false); light(0xff1f0d, 700, BDX - 120, sd * 450, 450, 1500, 3); }
+const guardLight = light(0xd9f2d9, 70, 7100, 1800, 270, 900, 2);
+for (const sd of [1, -1]) { box(M.mil, BDX, sd * 1675, 300, 100, 2850, 600); box(M.hazard, BDX - 55, sd * 225, 175, 10, 40, 350, 0, 0, 0, false); light(0xff1f0d, 220, BDX - 220, sd * 450, 450, 1500, 3); }
 box(M.mil, BDX, 0, 475, 100, 500, 250, 0, 0, 0, false); box(M.blood, BDX - 52, 330, 130, 2, 110, 170, 0, 0, 0, false);
 box(M.dark, BDX, 0, 175, 30, 400, 350); // porta do bunker (fechada)
-light(0xe6f0ff, 1100, 6300, 0, 650, 2600, 2); cyl(M.dark, 6300, 0, 330, 18, 660);
+light(0xe6f0ff, 600, 6300, 0, 650, 2600, 2); cyl(M.dark, 6300, 0, 330, 18, 660);
 for (const sd of [1, -1]) { const b = [5700, sd * 2750]; for (let i = 0; i < 4; i++) cyl(M.dark, b[0] + (i < 2 ? -120 : 120), b[1] + (i % 2 ? 120 : -120), 350, 20, 700); box(M.metal, b[0], b[1], 705, 320, 320, 20, 0, 0, 0, false); box(M.mil, b[0], b[1], 830, 260, 260, 220, 0, 0, 0, false); }
 // Limites laterais do pátio
 box(M.mil, 6750, 3100, 300, 2600, 100, 600); box(M.mil, 6750, -3100, 300, 2600, 100, 600);
@@ -811,7 +812,7 @@ function updatePlayer(dt) {
   if (isFlashOn()) { P.battery = Math.max(0, P.battery - dt / 420); if (P.battery <= 0) { P.flashOn = false; SFX.click(0.6); toast('A lanterna apagou. Sem bateria.', 3); } }
   let k = isFlashOn() ? lerp(0.3, 1, clamp(P.battery / 0.25, 0, 1)) : 0;
   if (k > 0) { const rate = (P.battery < 0.12 ? 0.6 : 0) + P.interference * 2.5; if (G.t >= P.flickerUntil && Math.random() < rate * dt) P.flickerUntil = G.t + frand(0.08, 0.5); if (G.t < P.flickerUntil) k *= Math.random() < 0.5 ? 0.03 : 0.5; }
-  flash.intensity = 600 * k; beam.material.uniforms.uI.value = k; beam.visible = k > 0.001;
+  flash.intensity = FLASH_CD * k; beam.material.uniforms.uI.value = k; beam.visible = k > 0.001;
   P.interference = Math.max(0, P.interference - dt * 0.4);
   // Pickups
   for (const p of G.pickups) {
@@ -974,57 +975,103 @@ function updateWorld(dt) {
 }
 
 // ============================================================================================
-// Pós-processamento: o mesmo que a câmera do Kael faz com medo e ferimentos
+// Pós-processamento. A cena é renderizada em HDR (meia precisão); depois vêm o bloom, o passe final
+// com exposição + curva AgX (realces rolam para o branco devagar, sem estourar em chapas) e, só então,
+// a gradação de cor, a vinheta e o grão em espaço de tela. Antes, contraste e grão eram aplicados em
+// HDR e multiplicados pela exposição (até 4,2x), o que estourava luzes e enchia o escuro de ruído.
 // ============================================================================================
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 0.9); composer.addPass(bloomPass);
+
+// Medidor de exposição: reduz a imagem HDR já renderizada a 64x36 (sem renderizar a cena de novo)
+class LumaPass extends Pass {
+  constructor() {
+    super(); this.needsSwap = false; this.want = false; this.ready = false;
+    this.rt = new THREE.WebGLRenderTarget(64, 36, { type: THREE.FloatType, depthBuffer: false });
+    this.buf = new Float32Array(64 * 36 * 4);
+    this.quad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, uStep: { value: new THREE.Vector2() } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uStep; varying vec2 vUv;
+        void main(){ vec3 s=vec3(0.); float lg=0.;
+          for(int j=0;j<4;j++) for(int i=0;i<4;i++){ vec3 c=texture2D(tDiffuse, vUv+(vec2(float(i),float(j))-1.5)*uStep).rgb; s+=c; lg+=log(max(dot(c,vec3(.2126,.7152,.0722)),1e-4)); }
+          gl_FragColor=vec4(s/16., lg/16.); }`,
+      depthTest: false, depthWrite: false,
+    }));
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    if (!this.want) return; this.want = false;
+    const u = this.quad.material.uniforms; u.tDiffuse.value = readBuffer.texture; u.uStep.value.set(1 / 256, 1 / 144);
+    const prev = renderer.getRenderTarget(); renderer.setRenderTarget(this.rt); this.quad.render(renderer); renderer.setRenderTarget(prev);
+    try { renderer.readRenderTargetPixels(this.rt, 0, 0, 64, 36, this.buf); this.ready = true; } catch (err) { this.failed = true; }
+  }
+}
+const lumaPass = new LumaPass(); composer.addPass(lumaPass);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.18, 0.35, 1); composer.addPass(bloomPass);
+
+const AGX = `
+const mat3 LIN_SRGB_TO_REC2020 = mat3(vec3(0.6274,0.0691,0.0164), vec3(0.3293,0.9195,0.0880), vec3(0.0433,0.0113,0.8956));
+const mat3 LIN_REC2020_TO_SRGB = mat3(vec3(1.6605,-0.1246,-0.0182), vec3(-0.5876,1.1329,-0.1006), vec3(-0.0728,-0.0083,1.1187));
+vec3 agxContrast(vec3 x){ vec3 x2=x*x, x4=x2*x2; return 15.5*x4*x2 - 40.14*x4*x + 31.96*x4 - 6.868*x2*x + 0.4298*x2 + 0.1191*x - 0.00232; }
+vec3 agx(vec3 color){
+  const mat3 inset = mat3(vec3(0.856627153315983,0.137318972929847,0.11189821299995), vec3(0.0951212405381588,0.761241990602591,0.0767994186031903), vec3(0.0482516061458583,0.101439036467562,0.811302368396859));
+  const mat3 outset = mat3(vec3(1.1271005818144368,-0.1413297634984383,-0.14132976349843826), vec3(-0.11060664309660323,1.157823702216272,-0.11060664309660294), vec3(-0.016493938717834573,-0.016493938717834257,1.2519364065950405));
+  color = inset * (LIN_SRGB_TO_REC2020 * color);
+  color = clamp((log2(max(color, 1e-10)) + 12.47393) / 16.5, 0., 1.);
+  color = outset * agxContrast(color);
+  return LIN_REC2020_TO_SRGB * pow(max(vec3(0.), color), vec3(2.2));
+}
+vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(0.41666))*1.055-0.055, c*12.92, vec3(lessThanEqual(c, vec3(0.0031308)))); }`;
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uFear: { value: 0 }, uLow: { value: 0 }, uDmg: { value: 0 }, uDead: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uExposure: { value: 1 }, uRes: { value: new THREE.Vector2(1, 1) }, uT: { value: 0 }, uFear: { value: 0 }, uLow: { value: 0 }, uDmg: { value: 0 }, uDead: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uT, uFear, uLow, uDmg, uDead; varying vec2 vUv;
-    float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233))+uT)*43758.5453); }
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uExposure, uT, uFear, uLow, uDmg, uDead; uniform vec2 uRes; varying vec2 vUv;
+    ${AGX}
+    float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233))+uT*7.31)*43758.5453); }
     void main(){ vec2 c=vUv-.5; float r=dot(c,c);
-      float fr=0.004+uFear*0.012+uDmg*0.02; vec2 off=c*r*fr*4.;
-      vec3 col=vec3(texture2D(tDiffuse,vUv+off).r, texture2D(tDiffuse,vUv).g, texture2D(tDiffuse,vUv-off).b);
-      float sat=clamp(0.78-uFear*0.3-uLow*0.45,0.15,1.); float l=dot(col,vec3(.299,.587,.114)); col=mix(vec3(l),col,sat); col*=vec3(.95,1.,1.04);
+      // Aberração cromática discreta (cresce com medo e ferimento)
+      vec2 off=c*r*(0.0015+uFear*0.006+uDmg*0.012)*4.;
+      vec3 hdr=vec3(texture2D(tDiffuse,vUv+off).r, texture2D(tDiffuse,vUv).g, texture2D(tDiffuse,vUv-off).b);
+      vec3 col=agx(hdr*uExposure);
+      // Gradação: menos saturação, sombras frias e realces quentes, suave
+      float l=dot(col,vec3(.2126,.7152,.0722));
+      col=mix(vec3(l),col,clamp(0.86-uFear*0.3-uLow*0.45,0.15,1.));
+      col*=mix(vec3(0.93,1.,1.07),vec3(1.03,1.,0.96),smoothstep(0.,0.3,l));
       float red=clamp(uLow*0.35+uDmg*0.35,0.,0.7); col*=vec3(1.,1.-red,1.-red);
-      col=(col-.5)*1.12+.5;
-      float vig=0.85+uFear*0.5+uLow*0.4; col*=1.-smoothstep(.1,.75,r*1.7)*clamp(vig,0.,1.);
-      float edge=smoothstep(.15,.5,r*1.6)*(uDmg*0.8+uLow*0.6); col=mix(col,vec3(0.28,0.,0.),clamp(edge,0.,0.85));
-      col+=(h(vUv*1024.)-.5)*(0.07+uFear*0.05);
-      col*=1.-uDead; gl_FragColor=vec4(max(col,0.),1.); }`,
+      // Vinheta discreta; o medo fecha o quadro
+      col*=1.-smoothstep(0.12,0.8,r*2.1)*clamp(0.3+uFear*0.35+uLow*0.3,0.,0.9);
+      float edge=smoothstep(.15,.5,r*1.6)*(uDmg*0.8+uLow*0.6); col=mix(col,vec3(0.05,0.,0.),clamp(edge,0.,0.85));
+      col*=1.-uDead;
+      vec3 s=toSRGB(max(col,0.));
+      // Grão de filme em espaço de tela: fraco no preto e no branco, mais visível nos meios-tons
+      float gl=dot(s,vec3(.3333));
+      s+=(h(vUv*uRes)-.5)*(0.022+uFear*0.03)*(1.-gl*0.7)*(0.35+0.65*smoothstep(0.,0.12,gl));
+      s+=(h(vUv*uRes+17.3)-.5)/255.;
+      gl_FragColor=vec4(clamp(s,0.,1.),1.); }`,
 });
 composer.addPass(grade);
-composer.addPass(new OutputPass());
 
-// ============================================================================================
-// Exposição automática (como a da Unreal): mede a luminância média numa imagem minúscula da cena
-// e ajusta a exposição. Os limites impedem que o olho se acostume por completo com o escuro.
-// ============================================================================================
-const EXP = { rt: null, buf: null, t: 0, target: 2.0, ok: true, min: 0.5, max: 4.2, key: 0.14 };
-function measureExposure(dt) {
+// Exposição automática: média logarítmica (pesando o centro) e um teto pelo percentil 96,
+// para que a parte mais clara da tela não estoure. Escurece rápido e clareia devagar, como o olho.
+const EXP = { cur: 0.9, target: 0.9, t: 0, min: 0.35, max: 1.05, key: 0.06, hi: 2.2 };
+const _lum = new Float32Array(64 * 36);
+function updateExposure(dt) {
   EXP.t -= dt;
-  if (EXP.ok && EXP.t <= 0) {
-    EXP.t = 0.3;
-    try {
-      if (!EXP.rt) { EXP.rt = new THREE.WebGLRenderTarget(32, 18, { type: THREE.FloatType }); EXP.buf = new Float32Array(32 * 18 * 4); }
-      const auto = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
-      const bg = scene.background; renderer.setRenderTarget(EXP.rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
-      renderer.shadowMap.autoUpdate = auto;
-      renderer.readRenderTargetPixels(EXP.rt, 0, 0, 32, 18, EXP.buf);
-      let sum = 0, wsum = 0;
-      for (let y = 0; y < 18; y++) for (let x = 0; x < 32; x++) {
-        const i = (y * 32 + x) * 4, L = 0.2126 * EXP.buf[i] + 0.7152 * EXP.buf[i + 1] + 0.0722 * EXP.buf[i + 2];
-        const dx = (x - 15.5) / 16, dy = (y - 8.5) / 9, w = 1 + 1.5 * Math.max(0, 1 - Math.hypot(dx, dy));
-        sum += Math.log(Math.max(L, 1e-4)) * w; wsum += w;
-      }
-      const avg = Math.exp(sum / wsum); if (isFinite(avg)) EXP.target = clamp(EXP.key / avg, EXP.min, EXP.max);
-    } catch (err) { EXP.ok = false; }
+  if (EXP.t <= 0 && !lumaPass.failed) { EXP.t = 0.25; lumaPass.want = true; }
+  if (lumaPass.ready) {
+    lumaPass.ready = false; const b = lumaPass.buf; let sum = 0, wsum = 0;
+    for (let y = 0; y < 36; y++) for (let x = 0; x < 64; x++) {
+      const i = y * 64 + x, k = i * 4; _lum[i] = 0.2126 * b[k] + 0.7152 * b[k + 1] + 0.0722 * b[k + 2];
+      const dx = (x - 31.5) / 32, dy = (y - 17.5) / 18, w = 1 + 1.5 * Math.max(0, 1 - Math.hypot(dx, dy));
+      sum += b[k + 3] * w; wsum += w;
+    }
+    const avg = Math.exp(sum / wsum), hiL = _lum.slice().sort()[Math.floor(_lum.length * 0.96)];
+    const t = Math.min(EXP.key / Math.max(avg, 1e-4), EXP.hi / Math.max(hiL, 1e-4));
+    if (isFinite(t)) EXP.target = clamp(t, EXP.min, EXP.max);
   }
-  // Escurecer rápido (clarão), clarear devagar (olho se adaptando ao escuro)
-  const cur = renderer.toneMappingExposure, speed = EXP.target < cur ? 3.5 : 0.6;
-  renderer.toneMappingExposure = Math.exp(lerp(Math.log(cur), Math.log(EXP.target), 1 - Math.exp(-dt * speed)));
+  const speed = EXP.target < EXP.cur ? 3 : 0.7;
+  EXP.cur = Math.exp(lerp(Math.log(EXP.cur), Math.log(EXP.target), 1 - Math.exp(-dt * speed)));
+  bloomPass.threshold = 1.5 / EXP.cur; // só o que fica realmente forte na tela floresce
 }
 
 // ============================================================================================
@@ -1107,7 +1154,7 @@ window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => { keys.clear(); P.firing = false; P.aiming = false; });
 canvas.addEventListener('wheel', e => { if (G.started && !P.dead) { P.weapon = 1 - P.weapon; P.reloading = false; } }, { passive: true });
 
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloomPass.resolution.set(w / 4, h / 4); grade.uniforms.uRes.value.set(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
 // ============================================================================================
@@ -1128,7 +1175,7 @@ function frame(now) {
   } else if (!G.started) { G.idle = (G.idle || 0) + dt; camera.rotation.set(-0.03 + Math.sin(G.idle * 0.2) * 0.02, Math.sin(G.idle * 0.13) * 0.12, 0); for (const e of G.enemies) if (!e.dormant) { animateInfected(e.B, 0, false, -1, 0, dt); placeEnemy(e); } else updateEnemy(e, 0); }
   updateWorld(dt);
   rain.update(dt, camera.position);
-  measureExposure(dt);
+  updateExposure(dt); grade.uniforms.uExposure.value = EXP.cur;
   const low = clamp((45 - P.hp) / 45, 0, 1);
   grade.uniforms.uT.value = (now % 10000) / 1000; grade.uniforms.uFear.value = P.fear; grade.uniforms.uLow.value = P.dead ? 1 : low; grade.uniforms.uDmg.value = P.dmgFlash;
   grade.uniforms.uDead.value = P.dead ? clamp((G.t - P.deathT) / 2.5, 0, 0.94) : 0;
@@ -1137,5 +1184,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__ruptura = { G, P, keys, camera, lights, flash, beam, scene, renderer };
+window.__ruptura = { G, P, keys, camera, lights, flash, beam, scene, renderer, EXP, composer,
+  settle() { EXP.cur = EXP.target; }, debugFlash(on) { P.flashOn = on; flash.intensity = on ? FLASH_CD : 0; beam.visible = on; } };
 </script>
