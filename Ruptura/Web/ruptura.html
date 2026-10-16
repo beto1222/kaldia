@@ -254,6 +254,175 @@ const M = {
 M.water.polygonOffset = M.blood.polygonOffset = true; M.water.polygonOffsetFactor = M.blood.polygonOffsetFactor = -2;
 
 // ============================================================================================
+// Texturas procedurais (geradas na carga, nenhum arquivo externo). Cada conjunto tem cor, rugosidade
+// e relevo (mapa de normais). As paredes e o chão usam coordenadas de mundo, então a textura tem a
+// mesma escala em todas as caixas da fase, sem esticar.
+// ============================================================================================
+const TN = 512, ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const sRGB8 = v => Math.round(255 * Math.min(1, Math.max(0, v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055)));
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function rng(sd) { let s = sd % 2147483646 + 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+// Ruído de valor periódico (emenda perfeita na repetição), em oitavas
+function fbm(P0, oct, sd, gain = 0.5, n = TN) {
+  const out = new Float32Array(n * n); let amp = 1, tot = 0;
+  for (let o = 0; o < oct; o++) {
+    const P = P0 << o, r = rng(sd * 7919 + o * 104729), L = new Float32Array(P * P).map(r), cs = n / P;
+    for (let y = 0; y < n; y++) {
+      const fy = y / cs, iy = Math.floor(fy), ty = fy - iy, sy = ty * ty * (3 - 2 * ty), y0 = (iy % P) * P, y1 = ((iy + 1) % P) * P;
+      for (let x = 0; x < n; x++) {
+        const fx = x / cs, ix = Math.floor(fx), tx = fx - ix, sx = tx * tx * (3 - 2 * tx), x0 = ix % P, x1 = (ix + 1) % P;
+        const a = L[y0 + x0] + (L[y0 + x1] - L[y0 + x0]) * sx, b = L[y1 + x0] + (L[y1 + x1] - L[y1 + x0]) * sx;
+        out[y * n + x] += (a + (b - a) * sy) * amp;
+      }
+    }
+    tot += amp; amp *= gain;
+  }
+  let lo = 1e9, hi = -1e9; for (const v of out) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (let i = 0; i < out.length; i++) out[i] = (out[i] - lo) / (hi - lo); return out;
+}
+// Rachaduras: caminhadas aleatórias com ramificações
+function cracks(count, sd, len, n = TN) {
+  const m = new Float32Array(n * n), r = rng(sd), stack = [];
+  for (let c = 0; c < count; c++) stack.push([r() * n, r() * n, r() * 6.283, len * (0.5 + r())]);
+  while (stack.length) {
+    let [x, y, a, L] = stack.pop();
+    for (let i = 0; i < L; i++) {
+      a += (r() - 0.5) * 0.7; x += Math.cos(a); y += Math.sin(a);
+      const xi = ((Math.round(x) % n) + n) % n, yi = ((Math.round(y) % n) + n) % n; m[yi * n + xi] = 1; m[yi * n + (xi + 1) % n] = Math.max(m[yi * n + (xi + 1) % n], 0.35);
+      if (r() < 0.012 && stack.length < 60) stack.push([x, y, a + (r() < 0.5 ? 1 : -1) * (0.6 + r() * 0.6), L * 0.4]);
+    }
+  }
+  return m;
+}
+// Escorridos verticais (água e ferrugem descendo das bordas)
+function streaks(count, sd, n = TN) {
+  const m = new Float32Array(n * n), r = rng(sd);
+  for (let c = 0; c < count; c++) {
+    const x0 = Math.floor(r() * n), w = 1 + Math.floor(r() * 5), top = Math.floor(r() * n), len = 40 + r() * n * 0.6, k = 0.3 + r() * 0.7;
+    for (let j = 0; j < len; j++) { const yi = ((top - j) % n + n) % n, f = k * (1 - j / len) * (0.7 + 0.3 * Math.sin(j * 0.07 + c));
+      for (let i = -w; i <= w; i++) { const xi = (x0 + i + n) % n, e = f * (1 - Math.abs(i) / (w + 1)); m[yi * n + xi] = Math.max(m[yi * n + xi], e); } }
+  }
+  return m;
+}
+function dots(count, sd, rmax, n = TN) {
+  const m = new Float32Array(n * n), r = rng(sd);
+  for (let c = 0; c < count; c++) { const cx = r() * n, cy = r() * n, rad = 0.6 + r() * rmax, k = 0.5 + r() * 0.5;
+    for (let y = Math.floor(cy - rad); y <= cy + rad; y++) for (let x = Math.floor(cx - rad); x <= cx + rad; x++) { const d = Math.hypot(x - cx, y - cy); if (d > rad) continue; const i = ((y % n + n) % n) * n + ((x % n + n) % n); m[i] = Math.max(m[i], k * (1 - d / rad)); } }
+  return m;
+}
+function texFrom(data, n, srgb) {
+  const t = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = ANISO;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t;
+}
+// albedo(i) -> [r,g,b] linear; rough(i) -> 0..1; height(i) -> qualquer escala
+function makeSet(albedo, rough, height, strength, n = TN) {
+  const A = new Uint8Array(n * n * 4), R = new Uint8Array(n * n * 4), N = new Uint8Array(n * n * 4), H = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) H[i] = height(i);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = y * n + x, k = i * 4, c = albedo(i), ro = rough(i);
+    A[k] = sRGB8(c[0]); A[k + 1] = sRGB8(c[1]); A[k + 2] = sRGB8(c[2]); A[k + 3] = 255;
+    R[k] = R[k + 1] = R[k + 2] = Math.round(255 * Math.min(1, Math.max(0.02, ro))); R[k + 3] = 255;
+    const hx = H[y * n + (x + 1) % n] - H[y * n + (x - 1 + n) % n], hy = H[((y + 1) % n) * n + x] - H[((y - 1 + n) % n) * n + x];
+    let nx = -hx * strength, ny = -hy * strength, nz = 1; const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
+    N[k] = Math.round((nx * 0.5 + 0.5) * 255); N[k + 1] = Math.round((ny * 0.5 + 0.5) * 255); N[k + 2] = Math.round((nz * 0.5 + 0.5) * 255); N[k + 3] = 255;
+  }
+  return { map: texFrom(A, n, true), roughnessMap: texFrom(R, n), normalMap: texFrom(N, n) };
+}
+const TEX = {}, texT0 = performance.now();
+{ // Concreto velho: manchas, poros, rachaduras e escorridos de chuva
+  const fine = fbm(8, 6, 11), big = fbm(2, 3, 12), stain = fbm(3, 4, 13), cr = cracks(6, 14, 140), st = streaks(70, 15), pit = dots(500, 16, 1.5);
+  TEX.concrete = makeSet(i => { const v = 0.8 + 0.2 * (big[i] - 0.5) + 0.12 * (fine[i] - 0.5) - 0.2 * sstep(0.55, 0.8, stain[i]) - 0.16 * st[i] - 0.13 * cr[i] - 0.1 * pit[i]; return [v, v * 0.985, v * 0.96]; },
+    i => 0.93 - 0.25 * sstep(0.55, 0.8, stain[i]) - 0.35 * st[i] - 0.1 * (1 - fine[i]), i => fine[i] * 0.55 + big[i] * 0.25 - cr[i] * 0.2 - pit[i] * 0.2, 3.2);
+}
+{ // Asfalto molhado: brita, rachaduras, remendos e áreas encharcadas
+  const grain = fbm(64, 3, 21), big = fbm(2, 4, 22), stone = dots(3500, 23, 1.4), cr = cracks(7, 24, 220), r = rng(25), patch = new Float32Array(TN * TN);
+  for (let p = 0; p < 3; p++) { const x0 = Math.floor(r() * TN), y0 = Math.floor(r() * TN), w = 60 + r() * 140, h = 50 + r() * 120; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) patch[((y0 + y) % TN) * TN + (x0 + x) % TN] = 1; }
+  TEX.asphalt = makeSet(i => { const wet = sstep(0.5, 0.68, big[i]); const v = 0.8 + 0.3 * (grain[i] - 0.5) + 0.22 * stone[i] - 0.18 * cr[i] - 0.12 * patch[i] - 0.25 * wet; return [v, v, v * 1.02]; },
+    i => { const wet = sstep(0.5, 0.68, big[i]); return lerp(0.26 + 0.2 * grain[i] - 0.06 * patch[i], 0.05, wet); }, i => grain[i] * 0.5 + stone[i] * 0.2 - cr[i] * 0.3 - sstep(0.5, 0.68, big[i]) * 0.15, 2.5);
+}
+{ // Pintura militar descascando sobre concreto, com escorrido de ferrugem
+  const fine = fbm(8, 5, 31), chip = fbm(6, 5, 32), big = fbm(2, 3, 33), st = streaks(40, 34), rs = streaks(14, 35), cr = cracks(5, 36, 120);
+  TEX.painted = makeSet(i => { const bare = sstep(0.66, 0.7, chip[i]); let v = 0.74 + 0.14 * (big[i] - 0.5) + 0.06 * (fine[i] - 0.5) - 0.14 * st[i] - 0.12 * cr[i]; v = lerp(v, 1, bare * 0.85); const ru = rs[i] * 0.7; return [v * (1 - 0.05 * ru), v * (1 - 0.3 * ru), v * (1 - 0.5 * ru)]; },
+    i => lerp(0.72, 0.95, sstep(0.66, 0.7, chip[i])) - 0.35 * st[i], i => fine[i] * 0.3 - sstep(0.66, 0.7, chip[i]) * 0.25 - cr[i] * 0.18, 2.6);
+}
+{ // Contêineres corrugados: pintura, ferrugem e arranhões (duas cores)
+  const rust = fbm(4, 5, 41), fine = fbm(16, 4, 42), st = streaks(50, 43), scr = cracks(30, 44, 30);
+  const rib = i => { const u = (i % TN) / TN * 8 % 1; return sstep(0.05, 0.2, u) - sstep(0.5, 0.65, u); };
+  const make = (paint, sd) => makeSet(i => { const ru = Math.max(sstep(0.6, 0.72, rust[i]), st[i] * 0.6), sc = scr[i] * 0.6; const base = paint.map(c => c * (0.85 + 0.25 * fine[i]) * (1 - 0.25 * st[i]));
+      const rc = [0.2 * (0.7 + 0.5 * fine[i]), 0.07, 0.025]; return base.map((c, k) => lerp(lerp(c, rc[k], ru), 0.3, sc)); },
+    i => lerp(0.5 + 0.15 * fine[i], 0.92, sstep(0.6, 0.72, rust[i])), i => rib(i) * 1.2 + fine[i] * 0.08 - sstep(0.6, 0.72, rust[i]) * 0.05, 6);
+  TEX.containerRust = make([0.17, 0.055, 0.025], 1); TEX.containerTeal = make([0.035, 0.09, 0.11], 2);
+}
+{ // Sacos de areia empilhados
+  const weave = fbm(128, 2, 51), dirt = fbm(3, 4, 52), r = rng(53), tone = Array.from({ length: 64 }, r);
+  const bag = i => { const x = i % TN, y = Math.floor(i / TN), row = Math.floor(y / 64), off = row % 2 ? 80 : 0, bx = ((x + off) % 160) / 160, by = (y % 64) / 64, col = Math.floor(((x + off) % TN) / 160);
+    return [Math.max(0, 1 - Math.pow(Math.abs(bx * 2 - 1), 4)) * Math.max(0, 1 - Math.pow(Math.abs(by * 2 - 1), 2.5)), tone[(row * 7 + col) % 64]]; };
+  TEX.sandbag = makeSet(i => { const [h, t] = bag(i), v = (0.55 + 0.4 * h) * (0.85 + 0.2 * t) * (0.9 + 0.12 * weave[i]) * (1 - 0.3 * sstep(0.5, 0.8, dirt[i])); return [v, v * 0.95, v * 0.85]; },
+    i => 0.95 - 0.15 * sstep(0.5, 0.8, dirt[i]), i => bag(i)[0] * 0.9 + weave[i] * 0.06, 4);
+}
+{ // Metal pintado de escuro, gasto e arranhado
+  const fine = fbm(32, 3, 61), big = fbm(3, 3, 62), scr = cracks(80, 63, 25), rs = dots(120, 64, 7);
+  TEX.metal = makeSet(i => { const v = 0.82 + 0.12 * (big[i] - 0.5) + 0.06 * fine[i] + 0.35 * scr[i]; const ru = rs[i] * 0.8; return [lerp(v, 0.5, ru), lerp(v, 0.22, ru), lerp(v, 0.1, ru)]; },
+    i => 0.45 + 0.25 * big[i] + 0.1 * fine[i] - 0.2 * scr[i] + 0.4 * rs[i], i => fine[i] * 0.1 - scr[i] * 0.3 + rs[i] * 0.2, 2.5);
+}
+{ // Faixas de perigo amarelo e preto, gastas
+  const chip = fbm(8, 5, 71), dirt = fbm(3, 4, 72);
+  TEX.hazard = makeSet(i => { const x = i % TN, y = Math.floor(i / TN), band = ((x + y) % 128) < 64; const worn = sstep(0.62, 0.7, chip[i]); let c = band ? [0.42, 0.28, 0.02] : [0.018, 0.016, 0.014]; c = c.map(v => lerp(v, 0.09, worn) * (1 - 0.35 * sstep(0.45, 0.8, dirt[i]))); return c; },
+    i => 0.7 + 0.2 * sstep(0.62, 0.7, chip[i]), i => -sstep(0.62, 0.7, chip[i]) * 0.3, 2);
+}
+{ // Janelas (UV da própria caixa): moldura, travessa, vidro sujo; janelas acesas com cortina
+  const n = 256, dirt = fbm(4, 4, 81, 0.5, n), A = new Uint8Array(n * n * 4), R = new Uint8Array(n * n * 4), E = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const u = x / n, v = y / n, i = y * n + x, k = i * 4;
+    const frame = u < 0.05 || u > 0.95 || v < 0.06 || v > 0.94 || Math.abs(u - 0.5) < 0.018 || Math.abs(v - 0.62) < 0.018;
+    const g = frame ? 0.5 : 1 - 0.4 * dirt[i]; A[k] = A[k + 1] = A[k + 2] = sRGB8(g); A[k + 3] = 255;
+    R[k] = R[k + 1] = R[k + 2] = Math.round(255 * (frame ? 0.85 : 0.08 + 0.45 * sstep(0.45, 0.85, dirt[i]))); R[k + 3] = 255;
+    const curtain = sstep(0.18, 0.3, u) * (1 - sstep(0.7, 0.82, u)), fold = 0.75 + 0.25 * Math.sin(u * 90);
+    const glow = frame ? 0 : (0.25 + 0.75 * v) * lerp(0.35 * fold, 1, curtain) * (0.85 + 0.15 * dirt[i]);
+    E[k] = sRGB8(glow); E[k + 1] = sRGB8(glow * 0.92); E[k + 2] = sRGB8(glow * 0.8); E[k + 3] = 255;
+  }
+  const mk = (d, srgb) => { const t = texFrom(d, n, srgb); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; };
+  TEX.window = { map: mk(A, true), roughnessMap: mk(R), emissiveMap: mk(E, true) };
+}
+// Aplica: escala do mundo (metros por repetição) e variação de tom por caixa
+function dress(m, set, scale, opts = {}) {
+  Object.assign(m, set); m.roughness = opts.rough ?? 1; if (opts.color) m.color.setRGB(...opts.color, THREE.LinearSRGBColorSpace);
+  if (opts.metal !== undefined) m.metalness = opts.metal; if (opts.normal) m.normalScale.set(opts.normal, opts.normal);
+  m.userData.uvScale = scale; m.userData.tint = opts.tint ?? 0.12; m.vertexColors = m.userData.tint > 0;
+}
+dress(M.concrete, TEX.concrete, 2.6, { color: [0.2, 0.195, 0.19] });
+dress(M.rubble, TEX.concrete, 1.1, { color: [0.13, 0.125, 0.12], normal: 1.5, tint: 0.2 });
+dress(M.mil, TEX.painted, 3.2, { color: [0.15, 0.155, 0.135] });
+dress(M.asphalt, TEX.asphalt, 4.5, { color: [0.05, 0.05, 0.052], metal: 0, tint: 0 });
+dress(M.rust, TEX.containerRust, 2.4, { color: [1, 1, 1], metal: 0.15, tint: 0.1 });
+dress(M.teal, TEX.containerTeal, 2.4, { color: [1, 1, 1], metal: 0.15, tint: 0.1 });
+dress(M.sandbag, TEX.sandbag, 1.6, { color: [0.24, 0.2, 0.14], tint: 0.15 });
+dress(M.metal, TEX.metal, 1.6, { color: [0.24, 0.24, 0.25], metal: 0.85, rough: 1 });
+dress(M.dark, TEX.metal, 1.4, { color: [0.045, 0.047, 0.05], metal: 0.8 });
+dress(M.burned, TEX.concrete, 1.2, { color: [0.03, 0.026, 0.022], metal: 0.1, tint: 0.2 });
+dress(M.hazard, TEX.hazard, 1.0, { color: [1, 1, 1], tint: 0.05 });
+for (const m of [M.glass, M.lit]) { m.map = TEX.window.map; m.roughnessMap = TEX.window.roughnessMap; m.roughness = 1; }
+M.lit.emissiveMap = TEX.window.emissiveMap; M.lit.emissiveIntensity = 0.5;
+// Chuva: base das paredes encharcada (respingos) e superfícies voltadas para cima molhadas
+function weather(m, topWet) {
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        float wetW = (1. - smoothstep(0.0, 0.6, vWP.y)) * (1. - abs(vWN.y));
+        float wet = max(wetW, smoothstep(0.7, 0.95, vWN.y) * ${topWet.toFixed(2)});
+        diffuseColor.rgb *= 1. - 0.4 * wet;
+        roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.3 + 0.05, wet);`);
+  };
+  m.customProgramCacheKey = () => 'wet' + topWet;
+}
+for (const m of [M.concrete, M.rubble, M.mil, M.sandbag, M.rust, M.teal, M.metal, M.dark, M.burned, M.hazard, M.carR, M.carB, M.carW]) weather(m, 0.85);
+M.skin.roughness = 0.42;
+TEX.ms = Math.round(performance.now() - texT0);
+
+// ============================================================================================
 // Construção da fase (World/CityBuilder.cpp) com geometria agrupada por material
 // ============================================================================================
 const buckets = new Map();
@@ -263,9 +432,25 @@ const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THRE
 function push(material, geo, x, y, z, sx, sy, sz, yaw = 0, pitch = 0, roll = 0) {
   tmpE.set(pitch * DEG, -yaw * DEG, roll * DEG, 'YXZ'); tmpQ.setFromEuler(tmpE);
   tmpM.compose(V(x, y, z), tmpQ, new THREE.Vector3(sy * S, sz * S, sx * S));
-  const g = geo.clone().applyMatrix4(tmpM);
+  const g = geo.clone().applyMatrix4(tmpM); dressGeo(g, material);
   if (!buckets.has(material)) buckets.set(material, []);
   buckets.get(material).push(g);
+}
+const tintRnd = rng(4242);
+function dressGeo(g, material) {
+  const p = g.attributes.position, n = g.attributes.normal, cnt = p.count, scale = material.userData.uvScale;
+  if (scale) {
+    const uv = g.attributes.uv;
+    for (let i = 0; i < cnt; i++) {
+      const nx = n.getX(i), ny = n.getY(i), nz = n.getZ(i), x = p.getX(i), y = p.getY(i), z = p.getZ(i); let u, v;
+      if (Math.abs(ny) > 0.7) { u = x; v = z; } else { const l = Math.hypot(nx, nz) || 1; u = (x * -nz + z * nx) / l; v = y; }
+      uv.setXY(i, u / scale, v / scale);
+    }
+  }
+  // Tom levemente diferente em cada caixa e um pouco mais escuro embaixo (sujeira, umidade)
+  const t = material.userData.tint || 0, k = 1 + (tintRnd() - 0.5) * 2 * t, hr = 1 + (tintRnd() - 0.5) * t * 0.4, hb = 1 + (tintRnd() - 0.5) * t * 0.4, col = new Float32Array(cnt * 3);
+  for (let i = 0; i < cnt; i++) { const low = t ? 0.82 + 0.18 * sstep(0, 3, p.getY(i)) : 1; col[i * 3] = k * hr * low; col[i * 3 + 1] = k * low; col[i * 3 + 2] = k * hb * low; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
 }
 function box(material, x, y, z, sx, sy, sz, yaw = 0, pitch = 0, roll = 0, collide = true) {
   push(material, unitBox, x, y, z, sx, sy, sz, yaw, pitch, roll);
@@ -278,7 +463,7 @@ function cyl(material, x, y, z, d, h, collide = true) {
   if (collide && h > 45) { const p = V(x, y, z); colliders.push({ x: p.x, z: p.z, hx: d * S / 2, hz: d * S / 2, r: 0, top: (z + h / 2) * S }); }
 }
 function blob(material, x, y, z, sx, sy, sz, yaw = 0) { push(material, unitSph, x, y, z, sx, sy, sz, yaw); }
-function wheel(x, y, z, yaw) { tmpE.set(0, -yaw * DEG, 90 * DEG, 'YXZ'); tmpQ.setFromEuler(tmpE); tmpM.compose(V(x, y, z), tmpQ, new THREE.Vector3(0.68, 0.26, 0.68)); const g = unitCyl.clone().applyMatrix4(tmpM); if (!buckets.has(M.rubber)) buckets.set(M.rubber, []); buckets.get(M.rubber).push(g); }
+function wheel(x, y, z, yaw) { tmpE.set(0, -yaw * DEG, 90 * DEG, 'YXZ'); tmpQ.setFromEuler(tmpE); tmpM.compose(V(x, y, z), tmpQ, new THREE.Vector3(0.68, 0.26, 0.68)); const g = unitCyl.clone().applyMatrix4(tmpM); dressGeo(g, M.rubber); if (!buckets.has(M.rubber)) buckets.set(M.rubber, []); buckets.get(M.rubber).push(g); }
 
 // Luzes da fase. Cada uma é "virtual" (posição, cor, intensidade); a cada instante só as mais próximas
 // ocupam uma luz de verdade. Postes, refletor e a luz da guarita são focos para baixo com sombra.
@@ -386,7 +571,7 @@ const guardLight = light(0xd9f2d9, 70, 7100, 1800, 270, 900, 2, true);
 for (const sd of [1, -1]) { box(M.mil, BDX, sd * 1675, 300, 100, 2850, 600); box(M.hazard, BDX - 55, sd * 225, 175, 10, 40, 350, 0, 0, 0, false); light(0xff1f0d, 90, BDX - 220, sd * 450, 450, 1500, 3); }
 box(M.mil, BDX, 0, 475, 100, 500, 250, 0, 0, 0, false); box(M.blood, BDX - 52, 330, 130, 2, 110, 170, 0, 0, 0, false);
 box(M.dark, BDX, 0, 175, 30, 400, 350); // porta do bunker (fechada)
-light(0xe6f0ff, 600, 6260, 0, 640, 2600, 2, true); // refletor: à frente do poste, não dentro dele cyl(M.dark, 6300, 0, 330, 18, 660);
+light(0xe6f0ff, 400, 6260, 0, 640, 2600, 2, true); // refletor: à frente do poste, não dentro dele cyl(M.dark, 6300, 0, 330, 18, 660);
 for (const sd of [1, -1]) { const b = [5700, sd * 2750]; for (let i = 0; i < 4; i++) cyl(M.dark, b[0] + (i < 2 ? -120 : 120), b[1] + (i % 2 ? 120 : -120), 350, 20, 700); box(M.metal, b[0], b[1], 705, 320, 320, 20, 0, 0, 0, false); box(M.mil, b[0], b[1], 830, 260, 260, 220, 0, 0, 0, false); }
 // Limites laterais do pátio
 box(M.mil, 6750, 3100, 300, 2600, 100, 600); box(M.mil, 6750, -3100, 300, 2600, 100, 600);
@@ -1328,6 +1513,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__ruptura = { G, P, keys, camera, lights, flash, scene, renderer, EXP, composer,
+window.__ruptura = { G, P, keys, camera, lights, flash, scene, renderer, EXP, composer, texMs: TEX.ms,
   settle() { EXP.cur = EXP.target; }, debugFlash(on) { P.flashOn = on; flash.intensity = on ? FLASH_CD : 0; flashRig.snap = true; } };
 </script>
