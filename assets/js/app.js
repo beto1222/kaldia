@@ -6,18 +6,17 @@
   const ROTA_PADRAO = 'inicio';
 
   // ---------- Tema ----------
-  const TEMAS = ['sistema', 'claro', 'escuro'];
-  let tema = 'sistema';
-  try { tema = localStorage.getItem('kaldia:tema') || 'sistema'; } catch (e) { /* sem armazenamento */ }
+  // Fundo branco por padrão; o tema escuro só entra se a pessoa escolher no botão
+  const TEMAS = ['claro', 'escuro'];
+  let tema = 'claro';
+  try { tema = localStorage.getItem('kaldia:tema') === 'escuro' ? 'escuro' : 'claro'; } catch (e) { /* sem armazenamento */ }
   const aplicarTema = () => {
     const raiz = document.documentElement;
-    if (tema === 'claro') raiz.setAttribute('data-theme', 'light');
-    else if (tema === 'escuro') raiz.setAttribute('data-theme', 'dark');
-    else raiz.removeAttribute('data-theme');
+    raiz.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
   };
   const botaoTema = () => {
-    const ic = { sistema: 'monitor', claro: 'sun', escuro: 'moon' }[tema];
-    const rot = { sistema: 'Tema: automático', claro: 'Tema: claro', escuro: 'Tema: escuro' }[tema];
+    const ic = tema === 'escuro' ? 'moon' : 'sun';
+    const rot = tema === 'escuro' ? 'Tema: escuro' : 'Tema: claro';
     return `<button type="button" class="icon-btn" id="btn-tema" aria-label="${rot}. Trocar tema" title="${rot}">${K.icon(ic, 18)}</button>`;
   };
   aplicarTema();
